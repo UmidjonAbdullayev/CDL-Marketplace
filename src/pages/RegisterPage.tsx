@@ -14,13 +14,20 @@ import { POLICY_VERSION } from "../lib/policies";
 import { validateEmail, validateProfileStep, type FieldErrors } from "../lib/registration-validation";
 import { sessionFromAccount } from "../lib/session";
 import { authenticateRegistration, submitRegistration } from "../services/registration";
+import { fetchCompanyById } from "../services/company";
 import type {
   AccountType,
   AgencyProfile,
   CarrierPlanId,
   CarrierProfile,
+  RegistrationAccount,
   SoloRecruiterProfile
 } from "../types/registration";
+
+async function sessionForAccount(account: RegistrationAccount) {
+  const company = account.company_id ? await fetchCompanyById(account.company_id) : null;
+  return sessionFromAccount(account, company);
+}
 
 type PageMode = "register" | "login";
 
@@ -154,7 +161,7 @@ export default function RegisterPage() {
         },
         { userAgent: navigator.userAgent }
       );
-      signIn(sessionFromAccount(result.account));
+      signIn(await sessionForAccount(result.account));
       navigate("/register/success", {
         state: {
           accountType,
@@ -189,8 +196,9 @@ export default function RegisterPage() {
         showToast("Invalid email or password", "error");
         return;
       }
-      signIn(sessionFromAccount(account));
-      showToast(`Welcome back, ${sessionFromAccount(account).name}`, "success");
+      const user = await sessionForAccount(account);
+      signIn(user);
+      showToast(`Welcome back, ${user.name}`, "success");
       navigate("/dashboard");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Sign in failed";

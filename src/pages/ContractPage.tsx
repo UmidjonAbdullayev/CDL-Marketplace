@@ -3,7 +3,6 @@ import { ArrowLeft, FileSignature, ShieldCheck } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { invalidateDataViews } from "../lib/dataInvalidation";
-import { DEMO_BUYER_ID } from "../lib/constants";
 import { BUYER_CONTRACT_CLAUSES } from "../lib/hiring";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -13,12 +12,12 @@ import type { DriverCard } from "../types";
 export default function ContractPage() {
   const { listingId } = useParams();
   const navigate = useNavigate();
-  const { showToast } = useApp();
+  const { showToast, sessionUser } = useApp();
   const id = Number(listingId);
 
   const [driver, setDriver] = useState<DriverCard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [signerName, setSignerName] = useState("RapidHaul Recruiting");
+  const [signerName, setSignerName] = useState(sessionUser?.name ?? "");
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -117,7 +116,7 @@ export default function ContractPage() {
           <div className="card-body contract-body">
             <section className="contract-section">
               <h4>Parties</h4>
-              <p><strong>Recruiting company (Buyer):</strong> RapidHaul Recruiting</p>
+              <p><strong>Recruiting company (Buyer):</strong> {sessionUser?.name ?? "Your company"}</p>
               <p><strong>Listing provider (Seller):</strong> {driver.seller}</p>
               <p><strong>Driver candidate:</strong> {fullName(driver)} · {driver.state} · {driver.cdl} · {driver.equip}</p>
             </section>
@@ -184,7 +183,7 @@ export default function ContractPage() {
               {submitting ? "Signing..." : "Sign & Start Hiring Process"}
             </button>
             <p className="t-caption t-secondary" style={{ marginTop: 10 }}>
-              Company ID: {DEMO_BUYER_ID.slice(0, 8)}…
+              {sessionUser?.companyId ? `Company ID: ${sessionUser.companyId.slice(0, 8)}…` : null}
             </p>
           </div>
         </div>

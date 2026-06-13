@@ -144,8 +144,8 @@ function pathToView(path: string): ViewKey | "driver" | null {
   return null;
 }
 
-function refreshMode(loadedAt: number, hasData: boolean): "skip" | "background" | "initial" {
-  if (!hasData) return "initial";
+function refreshMode(loadedAt: number): "skip" | "background" | "initial" {
+  if (loadedAt === 0) return "initial";
   if (Date.now() - loadedAt > STALE_MS) return "background";
   return "skip";
 }
@@ -282,7 +282,7 @@ function readDismissedNotifications(): Set<string> {
 
 export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const { searchQuery, debouncedSearch: appDebouncedSearch } = useApp();
+  const { searchQuery, debouncedSearch: appDebouncedSearch, sessionUser } = useApp();
   const debouncedSearch = useDebouncedValue(searchQuery, 100);
   const effectiveSearch = debouncedSearch || appDebouncedSearch;
 
@@ -421,7 +421,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   }, [notifications, dismissedNotifIds]);
 
   const refreshDashboard = useCallback(async (force = false) => {
-    const mode = force ? "background" : refreshMode(dashboard.loadedAt, dashboard.loadedAt > 0);
+    const mode = force ? "background" : refreshMode(dashboard.loadedAt);
     if (mode === "skip" && !force) return;
 
     if (mode === "initial") setDashboardLoading(true);
@@ -460,8 +460,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
 
   const refreshMarketplace = useCallback(async (force = false) => {
     const queryChanged = marketplaceQueryKeyRef.current !== marketplaceQueryKey;
-    const hasDataForQuery = !queryChanged && marketplaceLoadedAt > 0;
-    const mode = force ? "background" : queryChanged ? "initial" : refreshMode(marketplaceLoadedAt, hasDataForQuery);
+    const mode = force ? "background" : queryChanged ? "initial" : refreshMode(marketplaceLoadedAt);
     if (mode === "skip") return;
 
     if (mode === "initial" && marketplaceLoadedAt === 0) setMarketplaceLoading(true);
@@ -514,7 +513,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   ]);
 
   const refreshPurchased = useCallback(async (force = false) => {
-    const mode = force ? "background" : refreshMode(purchasedLoadedAt, purchasedRows.length > 0);
+    const mode = force ? "background" : refreshMode(purchasedLoadedAt);
     if (mode === "skip") return;
 
     if (mode === "initial" && purchasedRows.length === 0) setPurchasedLoading(true);
@@ -535,7 +534,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   }, [purchasedPage, purchasedLoadedAt, purchasedRows.length]);
 
   const refreshDeals = useCallback(async (force = false) => {
-    const mode = force ? "background" : refreshMode(dealsLoadedAt, deals.length > 0);
+    const mode = force ? "background" : refreshMode(dealsLoadedAt);
     if (mode === "skip") return;
 
     if (mode === "initial" && deals.length === 0) setDealsLoading(true);
@@ -560,7 +559,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   }, [dealsPage, dealsLoadedAt, deals.length]);
 
   const refreshDisputes = useCallback(async (force = false) => {
-    const mode = force ? "background" : refreshMode(disputesLoadedAt, disputes.length > 0);
+    const mode = force ? "background" : refreshMode(disputesLoadedAt);
     if (mode === "skip") return;
 
     if (mode === "initial" && disputes.length === 0) setDisputesLoading(true);
@@ -583,7 +582,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   }, [disputesPage, disputesLoadedAt, disputes.length, disputesTotal]);
 
   const refreshConversations = useCallback(async (force = false) => {
-    const mode = force ? "background" : refreshMode(conversationsLoadedAt, conversations.length > 0);
+    const mode = force ? "background" : refreshMode(conversationsLoadedAt);
     if (mode === "skip") return;
 
     if (mode === "initial" && conversations.length === 0) setConversationsLoading(true);
@@ -642,8 +641,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
 
   const refreshMyListings = useCallback(async (force = false) => {
     const queryChanged = listingsQueryKeyRef.current !== listingsQueryKey;
-    const hasData = listingRows.length > 0 && !queryChanged;
-    const mode = force ? "background" : queryChanged ? "initial" : refreshMode(listingsLoadedAt, hasData);
+    const mode = force ? "background" : queryChanged ? "initial" : refreshMode(listingsLoadedAt);
     if (mode === "skip") return;
 
     if (mode === "initial" && listingRows.length === 0) setListingsLoading(true);
@@ -675,7 +673,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   }, [listingsTab, listingsPage, listingsQueryKey, listingRows.length, listingsLoadedAt, reservations]);
 
   const refreshAdmin = useCallback(async (force = false) => {
-    const mode = force ? "background" : refreshMode(adminLoadedAt, adminApprovals.length > 0);
+    const mode = force ? "background" : refreshMode(adminLoadedAt);
     if (mode === "skip") return;
 
     if (mode === "initial" && adminApprovals.length === 0) setAdminLoading(true);
@@ -813,13 +811,18 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
       setAppLoading(false);
       return;
     }
+    if (!sessionUser?.companyId) {
+      setAppLoading(false);
+      return;
+    }
+    setAppLoading(true);
     void Promise.all([
       refreshDashboard(true),
       refreshNotifications(),
       refreshCdlScoreStatus(),
       fetchTrendingListingIds().then(setTrendingListingIds)
     ]).finally(() => setAppLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionUser?.companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (location.search.includes("hot=1")) {

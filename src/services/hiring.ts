@@ -1,4 +1,4 @@
-import { DEMO_BUYER_ID, DEMO_SELLER_ID } from "../lib/constants";
+import { getActiveCompanyId } from "../lib/activeCompany";
 import type { HiringStage } from "../lib/hiring";
 import { supabase } from "../lib/supabase";
 import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation } from "./marketplace";
@@ -74,10 +74,11 @@ async function insertDealEvent(dealIdValue: string, stage: string, title: string
 
 export async function fetchOngoingDeals(): Promise<HiringDealRow[]> {
   if (!supabase) return [];
+  const companyId = getActiveCompanyId();
   const { data: deals, error } = await supabase
     .from("deals")
     .select("*")
-    .or(`buyer_company_id.eq.${DEMO_BUYER_ID},seller_company_id.eq.${DEMO_SELLER_ID}`)
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
     .not("status", "eq", "Completed")
     .order("updated_at", { ascending: false });
   if (error) throw error;
@@ -106,11 +107,12 @@ export async function fetchOngoingDeals(): Promise<HiringDealRow[]> {
 
 export async function findActiveDealForListing(listingId: number): Promise<HiringDealRow | null> {
   if (!supabase) return null;
+  const companyId = getActiveCompanyId();
   const { data, error } = await supabase
     .from("deals")
     .select("*")
     .eq("listing_id", listingId)
-    .eq("buyer_company_id", DEMO_BUYER_ID)
+    .eq("buyer_company_id", companyId)
     .not("status", "eq", "Completed")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -143,7 +145,7 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
   const { error: dealErr } = await supabase.from("deals").insert({
     id,
     listing_id: listingId,
-    buyer_company_id: DEMO_BUYER_ID,
+    buyer_company_id: getActiveCompanyId(),
     seller_company_id: listing.seller_company_id,
     amount: listing.price,
     status: "Awaiting Seller Signature",
@@ -346,9 +348,15 @@ export async function fetchDealMessages(conversationId: string) {
   return data ?? [];
 }
 
-export async function sendDealMessage(conversationId: string, body: string, companyId: string, attachmentName?: string) {
+export async function sendDealMessage(
+  conversationId: string,
+  body: string,
+  companyId: string,
+  buyerCompanyId: string,
+  attachmentName?: string
+) {
   if (!supabase) return;
-  const direction = companyId === DEMO_BUYER_ID ? "out" : "in";
+  const direction = companyId === buyerCompanyId ? "out" : "in";
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
     sender_company_id: companyId,

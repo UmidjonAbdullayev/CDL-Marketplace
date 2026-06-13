@@ -74,6 +74,8 @@ export type RegistrationAccount = {
   mc_verified: boolean;
   profile_verified: boolean;
   suspended: boolean;
+  company_id: string | null;
+  is_admin: boolean;
   created_at: string;
   updated_at: string;
 };

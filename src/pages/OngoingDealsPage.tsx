@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, Handshake, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useApp } from "../context/AppContext";
 import { PageHeader } from "../lib/badges";
-import { DEMO_BUYER_ID, DEMO_SELLER_ID } from "../lib/constants";
 import { statusBadgeClass } from "../lib/hiring";
 import { fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -13,14 +13,10 @@ function driverName(deal: HiringDealRow): string {
   return d ? fullName({ first: d.first_name, last: d.last_name }) : "Driver";
 }
 
-function partyRole(deal: HiringDealRow): "Buyer" | "Seller" {
-  return deal.seller_company_id === DEMO_SELLER_ID && deal.buyer_company_id !== DEMO_BUYER_ID
-    ? "Seller"
-    : deal.buyer_company_id === DEMO_BUYER_ID
-      ? "Buyer"
-      : deal.seller_company_id === DEMO_SELLER_ID
-        ? "Seller"
-        : "Buyer";
+function partyRole(deal: HiringDealRow, companyId: string): "Buyer" | "Seller" {
+  if (deal.buyer_company_id === companyId) return "Buyer";
+  if (deal.seller_company_id === companyId) return "Seller";
+  return "Buyer";
 }
 
 function nextAction(deal: HiringDealRow): string {
@@ -36,20 +32,22 @@ function nextAction(deal: HiringDealRow): string {
 
 export default function OngoingDealsPage() {
   const navigate = useNavigate();
+  const { sessionUser } = useApp();
   const [deals, setDeals] = useState<HiringDealRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const companyId = sessionUser?.companyId ?? "";
 
   useEffect(() => {
     void (async () => {
       try {
-        if (isSupabaseConfigured) {
+        if (isSupabaseConfigured && companyId) {
           setDeals(await fetchOngoingDeals());
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [companyId]);
 
   return (
     <div className="page active">
@@ -93,7 +91,7 @@ export default function OngoingDealsPage() {
               </div>
               <div className="ongoing-deal-side">
                 <span className={`badge ${statusBadgeClass(deal.status)}`}>{deal.status}</span>
-                <span className="badge badge-gray">{partyRole(deal)}</span>
+                <span className="badge badge-gray">{partyRole(deal, companyId)}</span>
                 <div className="ongoing-deal-fee">{fmtRecruitingFee(deal.amount)} recruiting fee</div>
                 <div className="ongoing-deal-action t-caption">{nextAction(deal)}</div>
               </div>

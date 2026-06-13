@@ -1,4 +1,4 @@
-import { DEMO_BUYER_ID } from "../lib/constants";
+import { getActiveCompanyId } from "../lib/activeCompany";
 import { supabase } from "../lib/supabase";
 
 export type NotificationUrgency = "overdue" | "today" | "soon" | "info";
@@ -50,10 +50,11 @@ function urgencyColor(urgency: NotificationUrgency): string {
 
 export async function fetchUnreadMessageCount(): Promise<number> {
   if (!supabase) return 0;
+  const companyId = getActiveCompanyId();
   const { data: convos, error } = await supabase
     .from("conversations")
     .select("id, buyer_last_read_at")
-    .eq("buyer_company_id", DEMO_BUYER_ID);
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
   if (error || !convos?.length) return 0;
 
   let total = 0;
@@ -72,19 +73,21 @@ export async function fetchUnreadMessageCount(): Promise<number> {
 
 export async function markConversationRead(conversationId: string): Promise<void> {
   if (!supabase) return;
+  const companyId = getActiveCompanyId();
   await supabase
     .from("conversations")
     .update({ buyer_last_read_at: new Date().toISOString() })
     .eq("id", conversationId)
-    .eq("buyer_company_id", DEMO_BUYER_ID);
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
 }
 
 export async function markAllConversationsRead(): Promise<void> {
   if (!supabase) return;
+  const companyId = getActiveCompanyId();
   await supabase
     .from("conversations")
     .update({ buyer_last_read_at: new Date().toISOString() })
-    .eq("buyer_company_id", DEMO_BUYER_ID);
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
 }
 
 export async function fetchNotifications(): Promise<AppNotification[]> {
@@ -92,10 +95,18 @@ export async function fetchNotifications(): Promise<AppNotification[]> {
   const items: AppNotification[] = [];
   const now = new Date().toISOString();
 
+  const companyId = getActiveCompanyId();
   const [dealsRes, disputesRes, reservationsRes, listingsRes, followUpsRes, convosRes] = await Promise.all([
-    supabase.from("deals").select("id, status, updated_at, created_at").eq("buyer_company_id", DEMO_BUYER_ID),
-    supabase.from("disputes").select("id, deal_id, reason, admin_status, filed_at").neq("admin_status", "Resolved"),
-    supabase.from("reservations").select("id, listing_id, expires_at, created_at").eq("buyer_company_id", DEMO_BUYER_ID),
+    supabase
+      .from("deals")
+      .select("id, status, updated_at, created_at")
+      .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`),
+    supabase
+      .from("disputes")
+      .select("id, deal_id, reason, admin_status, filed_at")
+      .eq("filed_by_company_id", companyId)
+      .neq("admin_status", "Resolved"),
+    supabase.from("reservations").select("id, listing_id, expires_at, created_at").eq("buyer_company_id", companyId),
     supabase
       .from("driver_listings")
       .select("id, first_name, last_name, state, equipment, created_at, hot_score")
@@ -103,8 +114,11 @@ export async function fetchNotifications(): Promise<AppNotification[]> {
       .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
       .order("created_at", { ascending: false })
       .limit(5),
-    supabase.from("follow_ups").select("*").eq("company_id", DEMO_BUYER_ID),
-    supabase.from("conversations").select("id, subject, last_message_at, buyer_last_read_at").eq("buyer_company_id", DEMO_BUYER_ID)
+    supabase.from("follow_ups").select("*").eq("company_id", companyId),
+    supabase
+      .from("conversations")
+      .select("id, subject, last_message_at, buyer_last_read_at")
+      .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
   ]);
 
   for (const d of dealsRes.data ?? []) {
@@ -216,15 +230,16 @@ export async function fetchUpcomingActions(): Promise<UpcomingAction[]> {
   if (!supabase) return [];
   const actions: UpcomingAction[] = [];
 
+  const companyId = getActiveCompanyId();
   const [dealsRes, reservationsRes, followUpsRes, purchasesRes] = await Promise.all([
     supabase
       .from("deals")
       .select("id, status, updated_at, listing_id")
-      .eq("buyer_company_id", DEMO_BUYER_ID)
+      .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
       .in("status", ["Pending Payment", "Contact Released", "Orientation Scheduled", "Hired Confirmed", "Reserved"]),
-    supabase.from("reservations").select("listing_id, expires_at").eq("buyer_company_id", DEMO_BUYER_ID),
-    supabase.from("follow_ups").select("*").eq("company_id", DEMO_BUYER_ID),
-    supabase.from("purchases").select("id, recruit_status, listing_id, purchased_at").eq("buyer_company_id", DEMO_BUYER_ID)
+    supabase.from("reservations").select("listing_id, expires_at").eq("buyer_company_id", companyId),
+    supabase.from("follow_ups").select("*").eq("company_id", companyId),
+    supabase.from("purchases").select("id, recruit_status, listing_id, purchased_at").eq("buyer_company_id", companyId)
   ]);
 
   for (const d of dealsRes.data ?? []) {
@@ -301,7 +316,7 @@ export async function verifyCdlScoreLogin(email: string, password: string): Prom
   await supabase
     .from("companies")
     .update({ cdl_score_verified: true, cdl_score_email: email.trim().toLowerCase() })
-    .eq("id", DEMO_BUYER_ID);
+    .eq("id", getActiveCompanyId());
   return true;
 }
 
@@ -310,7 +325,7 @@ export async function fetchCdlScoreVerified(): Promise<boolean> {
   const { data } = await supabase
     .from("companies")
     .select("cdl_score_verified")
-    .eq("id", DEMO_BUYER_ID)
+    .eq("id", getActiveCompanyId())
     .maybeSingle();
   return Boolean(data?.cdl_score_verified);
 }

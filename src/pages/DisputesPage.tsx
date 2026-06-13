@@ -43,6 +43,9 @@ export default function DisputesPage() {
         {loading && rows.length === 0 ? (
           <tr><td colSpan={8} className="t-secondary">Loading disputes...</td></tr>
         ) : null}
+        {!loading && rows.length === 0 ? (
+          <tr><td colSpan={8} className="t-secondary">No disputes filed.</td></tr>
+        ) : null}
         {rows.map((r) => (
           <tr key={r.id} id={r.id.toLowerCase()}>
             <td>{r.id}</td><td>{r.deal_id}</td><td>{r.reason}</td>

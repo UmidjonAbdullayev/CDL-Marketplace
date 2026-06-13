@@ -1,5 +1,4 @@
 import type { AccountType, RegistrationAccount, RegistrationStatus } from "../types/registration";
-import { DEMO_BUYER_ID } from "./constants";
 
 export type SessionUser = {
   id: string;
@@ -9,6 +8,9 @@ export type SessionUser = {
   email: string;
   accountType: AccountType;
   status: RegistrationStatus;
+  companyId: string;
+  isAdmin: boolean;
+  walletBalance: number;
 };
 
 const SESSION_KEY = "cdl_exchange_session";
@@ -43,7 +45,10 @@ function accountDisplayName(account: RegistrationAccount): string {
   return (p as { fullName: string }).fullName;
 }
 
-export function sessionFromAccount(account: RegistrationAccount): SessionUser {
+export function sessionFromAccount(
+  account: RegistrationAccount,
+  company?: { wallet_balance?: number | null } | null
+): SessionUser {
   const name = accountDisplayName(account);
   const plan = account.selected_plan
     ? PLAN_LABELS[account.selected_plan] ?? account.selected_plan
@@ -56,7 +61,10 @@ export function sessionFromAccount(account: RegistrationAccount): SessionUser {
     initials: initialsFromName(name),
     email: account.email,
     accountType: account.account_type,
-    status: account.status
+    status: account.status,
+    companyId: account.company_id ?? "",
+    isAdmin: Boolean(account.is_admin),
+    walletBalance: Number(company?.wallet_balance ?? 0)
   };
 }
 
@@ -81,8 +89,8 @@ export function clearSession(): void {
 export function initSession(): SessionUser | null {
   const user = readSession();
   if (!user) return null;
-  // Drop legacy auto-demo sessions from older builds
-  if (!user.email || user.id === DEMO_BUYER_ID) {
+  // Drop legacy sessions from older builds missing per-user company scope
+  if (!user.email || !user.companyId) {
     clearSession();
     return null;
   }

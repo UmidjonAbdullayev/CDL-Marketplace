@@ -101,8 +101,10 @@ export default function MyListingsPage() {
         <div className="card"><div className="table-wrap"><table>
           <thead><tr><th>Driver</th><th>Reserved By</th><th>Expires</th><th>Price</th><th>Status</th></tr></thead>
           <tbody>
-            {loading ? (
+            {loading && reservations.length === 0 ? (
               <tr><td colSpan={5} className="t-secondary">Loading reservations...</td></tr>
+            ) : reservations.length === 0 ? (
+              <tr><td colSpan={5} className="t-secondary">No reserved listings</td></tr>
             ) : reservations.map((r, i) => {
               const listing = r.driver_listings;
               const buyer = r.companies;

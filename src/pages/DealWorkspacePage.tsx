@@ -12,7 +12,6 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
-import { DEMO_BUYER_ID, DEMO_SELLER_ID } from "../lib/constants";
 import {
   BUYER_CONTRACT_CLAUSES,
   HIRING_STAGES,
@@ -46,14 +45,14 @@ function formatMsgTime(iso: string) {
 export default function DealWorkspacePage() {
   const { dealId } = useParams();
   const navigate = useNavigate();
-  const { showToast } = useApp();
+  const { showToast, sessionUser } = useApp();
 
   const [workspace, setWorkspace] = useState<DealWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
   const [messages, setMessages] = useState<Awaited<ReturnType<typeof fetchDealMessages>>>([]);
   const [chatInput, setChatInput] = useState("");
-  const [sellerName, setSellerName] = useState("FleetSource Agency");
+  const [sellerName, setSellerName] = useState(sessionUser?.name ?? "");
   const [sellerAgreed, setSellerAgreed] = useState(false);
   const [signing, setSigning] = useState(false);
 
@@ -83,22 +82,21 @@ export default function DealWorkspacePage() {
   const currentStageIdx = stageIndex(deal?.hiring_stage ?? "contract");
   const chatOpen = Boolean(deal?.buyer_signed_at && deal?.seller_signed_at);
 
-  const isSellerParty = deal?.seller_company_id === DEMO_SELLER_ID;
+  const myCompanyId = sessionUser?.companyId ?? "";
+  const isSellerParty = deal?.seller_company_id === myCompanyId;
   const needsSellerSign = Boolean(deal && !deal.seller_signed_at && deal.buyer_signed_at);
 
   const sendChat = async () => {
-    if (!chatInput.trim() || !workspace?.conversationId || !deal) return;
+    if (!chatInput.trim() || !workspace?.conversationId || !deal || !myCompanyId) return;
     const text = chatInput.trim();
     setChatInput("");
-    const companyId = isSellerParty ? DEMO_SELLER_ID : DEMO_BUYER_ID;
-    await sendDealMessage(workspace.conversationId, text, companyId);
+    await sendDealMessage(workspace.conversationId, text, myCompanyId, deal.buyer_company_id);
     setMessages(await fetchDealMessages(workspace.conversationId));
   };
 
   const attachDoc = async (name: string) => {
-    if (!deal) return;
-    const companyId = isSellerParty ? DEMO_SELLER_ID : DEMO_BUYER_ID;
-    await uploadDealDocument(deal.id, name, companyId);
+    if (!deal || !myCompanyId) return;
+    await uploadDealDocument(deal.id, name, myCompanyId);
     showToast(`Shared: ${name}`, "success");
     await load();
     setTab("documents");
@@ -131,9 +129,9 @@ export default function DealWorkspacePage() {
       { id: "overview" as Tab, label: "Profile", icon: User },
       { id: "timeline" as Tab, label: "Timeline", icon: Clock },
       { id: "chat" as Tab, label: "Chat", icon: MessageSquare, disabled: !chatOpen },
-      { id: "documents" as Tab, label: "Documents", icon: FileText, disabled: !chatOpen }
+      { id: "documents" as Tab, label: "Contracts", icon: FileText, disabled: !deal?.buyer_signed_at }
     ],
-    [chatOpen]
+    [chatOpen, deal?.buyer_signed_at]
   );
 
   if (loading) {
@@ -166,7 +164,7 @@ export default function DealWorkspacePage() {
         <span className={`badge ${statusBadgeClass(deal.status)}`} style={{ marginLeft: "auto" }}>{deal.status}</span>
       </div>
 
-      {needsSellerSign ? (
+      {needsSellerSign && isSellerParty ? (
         <div className="card seller-contract-banner">
           <div className="card-body">
             <h3>Seller representation agreement required</h3>
@@ -343,32 +341,62 @@ export default function DealWorkspacePage() {
         </div>
       ) : null}
 
-      {tab === "documents" && chatOpen ? (
+      {tab === "documents" && deal?.buyer_signed_at ? (
         <div className="card">
           <div className="card-header" style={{ justifyContent: "space-between" }}>
-            <h3>Shared Documents</h3>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void attachDoc(`Document_${Date.now()}.pdf`)}>
-              Upload Document
-            </button>
+            <h3>Contracts & Documents</h3>
+            {chatOpen ? (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void attachDoc(`Document_${Date.now()}.pdf`)}>
+                Upload Document
+              </button>
+            ) : null}
           </div>
           <div className="card-body">
-            {workspace.documents.length === 0 ? (
-              <p className="t-secondary">No documents shared yet. Use chat attachments or upload here.</p>
+            <div className="deal-contract-summary" style={{ marginBottom: 20, fontSize: 13, lineHeight: 1.8 }}>
+              <h4 className="t-card" style={{ marginBottom: 8 }}>Recruiting agreements</h4>
+              <p>
+                <strong>Buyer:</strong> {deal.companies_buyer?.name ?? "—"}
+                {deal.buyer_signed_at
+                  ? ` — signed by ${deal.buyer_signer_name ?? "—"} on ${fmtDate(deal.buyer_signed_at)}`
+                  : " — pending signature"}
+              </p>
+              <p>
+                <strong>Seller:</strong> {deal.companies_seller?.name ?? "—"}
+                {deal.seller_signed_at
+                  ? ` — signed by ${deal.seller_signer_name ?? "—"} on ${fmtDate(deal.seller_signed_at)}`
+                  : " — pending signature"}
+              </p>
+              <p className="t-secondary">Deal {deal.id} · Platform recruiting fee {fmtRecruitingFee(deal.amount)}</p>
+            </div>
+
+            {chatOpen ? (
+              workspace.documents.length === 0 ? (
+                <p className="t-secondary">No additional documents shared yet.</p>
+              ) : (
+                <ul className="deal-doc-list">
+                  {workspace.documents.map((d) => (
+                    <li key={d.id}>
+                      <FileText className="icon-sm" />
+                      <span>{d.file_name}</span>
+                      <span className="t-caption t-secondary">{fmtDate(d.created_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )
             ) : (
-              <ul className="deal-doc-list">
-                {workspace.documents.map((d) => (
-                  <li key={d.id}>
-                    <FileText className="icon-sm" />
-                    <span>{d.file_name}</span>
-                    <span className="t-caption t-secondary">{fmtDate(d.created_at)}</span>
-                  </li>
-                ))}
-              </ul>
+              <p className="t-secondary">Shared documents unlock after both parties sign the recruiting agreement.</p>
             )}
+
             <div style={{ marginTop: 20 }}>
               <h4 className="t-card" style={{ marginBottom: 8 }}>Buyer agreement clauses</h4>
               <ul className="contract-clauses-compact">{BUYER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
             </div>
+            {deal.seller_signed_at ? (
+              <div style={{ marginTop: 16 }}>
+                <h4 className="t-card" style={{ marginBottom: 8 }}>Seller agreement clauses</h4>
+                <ul className="contract-clauses-compact">{SELLER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

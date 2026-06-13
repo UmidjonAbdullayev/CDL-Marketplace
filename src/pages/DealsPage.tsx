@@ -76,6 +76,9 @@ export default function DealsPage() {
         {loading && deals.length === 0 ? (
           <tr><td colSpan={8} className="t-secondary">Loading deals...</td></tr>
         ) : null}
+        {!loading && deals.length === 0 ? (
+          <tr><td colSpan={8} className="t-secondary">No deals yet. Start a hiring process from the marketplace.</td></tr>
+        ) : null}
         {deals.map((d) => (
           <tr key={d.id} className="row-clickable" onClick={() => navigate(`/deals/${d.id}`)} style={{ cursor: "pointer" }}>
             <td>{d.id}</td><td>{driverLabel(d)}</td>

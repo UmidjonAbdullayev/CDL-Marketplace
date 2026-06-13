@@ -1,42 +1,142 @@
+import { useEffect, useState } from "react";
 import { Award, ShieldCheck, Star } from "lucide-react";
-import { PageHeader, ReviewStars, VerifiedBadge } from "../lib/badges";
+import { useApp } from "../context/AppContext";
+import { PageHeader, VerifiedBadge } from "../lib/badges";
+import { fetchCompanyById } from "../services/company";
+import { fetchRegistrationById } from "../services/registration";
+import type { AgencyProfile, CarrierProfile, SoloRecruiterProfile } from "../types/registration";
 
 export default function ProfilePage() {
+  const { sessionUser } = useApp();
+  const [loading, setLoading] = useState(true);
+  const [companyStats, setCompanyStats] = useState({
+    rating: 0,
+    leadsSold: 0,
+    refundRate: 0,
+    memberSince: ""
+  });
+  const [details, setDetails] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!sessionUser?.id) {
+      setLoading(false);
+      return;
+    }
+    void (async () => {
+      try {
+        const account = await fetchRegistrationById(sessionUser.id);
+        if (!account) return;
+
+        if (account.company_id) {
+          const company = await fetchCompanyById(account.company_id);
+          if (company) {
+            setCompanyStats({
+              rating: Number(company.rating),
+              leadsSold: company.leads_sold,
+              refundRate: Number(company.refund_rate),
+              memberSince: new Date(company.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+            });
+          }
+        }
+
+        const p = account.profile_data;
+        if (account.account_type === "carrier") {
+          const c = p as CarrierProfile;
+          setDetails({
+            Company: c.companyName,
+            "MC#": c.mcNumber,
+            DOT: c.dotNumber ?? "—",
+            Specialization: c.specialization,
+            "Service Area": c.serviceArea,
+            Contact: c.companyEmail,
+            Website: c.website || "—",
+            Location: `${c.city}, ${c.state}`,
+            About: c.about ?? ""
+          });
+        } else if (account.account_type === "agency") {
+          const a = p as AgencyProfile;
+          setDetails({
+            Company: a.agencyName,
+            Specialization: a.specialization,
+            "Service Area": a.serviceArea,
+            Contact: a.companyEmail,
+            Website: a.website || "—",
+            Location: `${a.city}, ${a.state}`,
+            About: a.about ?? ""
+          });
+        } else {
+          const s = p as SoloRecruiterProfile;
+          setDetails({
+            Name: s.fullName,
+            Email: s.email,
+            Phone: s.phone,
+            Experience: `${s.yearsExperience} years`,
+            "Driver Types": s.primaryDriverTypes,
+            "Service Area": s.serviceArea,
+            Role: s.currentRole
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [sessionUser?.id]);
+
+  const displayName = sessionUser?.name ?? "Your Company";
+  const initials = sessionUser?.initials ?? "—";
+  const profileTitle = sessionUser?.accountType === "carrier" ? "Company Profile" : "Recruiter Profile";
+  const profileDesc =
+    sessionUser?.accountType === "carrier"
+      ? "Your company profile and recruiting details."
+      : "Your public seller profile and recruiting details.";
+
+  if (loading) {
+    return (
+      <div className="page active">
+        <p className="t-secondary">Loading profile...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="page active">
-      <PageHeader title="Company / Recruiter Profile" desc="Your public seller profile and company details." />
+      <PageHeader title={profileTitle} desc={profileDesc} />
       <div className="card"><div className="profile-header">
-        <div className="profile-avatar">FS</div>
-        <div style={{ flex: 1 }}><h3 className="t-section">FleetSource Agency</h3>
+        <div className="profile-avatar">{initials}</div>
+        <div style={{ flex: 1 }}><h3 className="t-section">{displayName}</h3>
           <div style={{ display: "flex", gap: "var(--s2)", margin: "var(--s2) 0", flexWrap: "wrap" }}>
-            <VerifiedBadge text="Verified Company" />
-            <span className="badge badge-navy"><Award className="icon-sm" /> Trusted Seller</span>
-            <span className="badge badge-blue"><ShieldCheck className="icon-sm" /> CDL Score Partner</span>
+            {sessionUser?.status === "active" ? <VerifiedBadge text="Verified Account" /> : null}
+            {sessionUser?.accountType !== "carrier" ? (
+              <span className="badge badge-navy"><Award className="icon-sm" /> Seller</span>
+            ) : (
+              <span className="badge badge-blue"><ShieldCheck className="icon-sm" /> Buyer / Recruiter</span>
+            )}
           </div>
-          <div className="t-secondary">Dallas, TX · Member since Jan 2024 · DOT# 3847291</div>
+          <div className="t-secondary">
+            {details.Location ?? "—"}
+            {companyStats.memberSince ? ` · Member since ${companyStats.memberSince}` : ""}
+          </div>
         </div>
-        <button className="btn btn-secondary">Edit Profile</button>
+        <button className="btn btn-secondary" type="button">Edit Profile</button>
       </div>
       <div className="profile-stats" style={{ padding: "0 24px 24px" }}>
-        <div className="profile-stat"><div className="num">4.8</div><div className="lbl" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><Star className="icon-sm" style={{ color: "var(--warning)" }} /> Seller Rating</div></div>
-        <div className="profile-stat"><div className="num">247</div><div className="lbl">Leads Sold</div></div>
-        <div className="profile-stat"><div className="num">2.1%</div><div className="lbl">Refund Rate</div></div>
-        <div className="profile-stat"><div className="num">1.4h</div><div className="lbl">Avg Response</div></div>
+        <div className="profile-stat"><div className="num">{companyStats.rating.toFixed(1)}</div><div className="lbl" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><Star className="icon-sm" style={{ color: "var(--warning)" }} /> Rating</div></div>
+        <div className="profile-stat"><div className="num">{companyStats.leadsSold}</div><div className="lbl">Leads Sold</div></div>
+        <div className="profile-stat"><div className="num">{companyStats.refundRate}%</div><div className="lbl">Refund Rate</div></div>
+        <div className="profile-stat"><div className="num">—</div><div className="lbl">Avg Response</div></div>
       </div></div>
       <div className="grid-2" style={{ marginTop: 20 }}>
-        <div className="card"><div className="card-header"><h3>Reviews (48)</h3></div><div className="card-body">
-          <div className="review-item"><ReviewStars filled={5} /><strong>RapidHaul Recruiting</strong> · Jun 3, 2026<p className="t-secondary" style={{ marginTop: "var(--s1)" }}>Excellent lead quality. Robert was exactly as described. Fast response time.</p></div>
-          <div className="review-item"><ReviewStars filled={4} /><strong>Swift Logistics</strong> · May 28, 2026<p className="t-secondary" style={{ marginTop: "var(--s1)" }}>Good leads overall. One driver had outdated medical cert but seller resolved quickly.</p></div>
-          <div className="review-item"><ReviewStars filled={5} /><strong>Desert Carriers</strong> · May 20, 2026<p className="t-secondary" style={{ marginTop: "var(--s1)" }}>Best lead vendor we've used. Consent docs always included. Highly recommend.</p></div>
+        <div className="card"><div className="card-header"><h3>Reviews</h3></div><div className="card-body">
+          {companyStats.leadsSold === 0 ? (
+            <p className="t-secondary">No reviews yet. Complete deals to build your reputation on the marketplace.</p>
+          ) : (
+            <p className="t-secondary">Reviews from completed deals will appear here.</p>
+          )}
         </div></div>
         <div className="card"><div className="card-header"><h3>Company Details</h3></div><div className="card-body" style={{ fontSize: 13, lineHeight: 2 }}>
-          <strong>Company:</strong> FleetSource Agency LLC<br />
-          <strong>MC#:</strong> MC-892471<br />
-          <strong>Specialization:</strong> Class A OTR, Tanker, Hazmat<br />
-          <strong>Service Area:</strong> Nationwide<br />
-          <strong>Contact:</strong> recruiting@fleetsource.com<br />
-          <strong>Website:</strong> www.fleetsource.com<br /><br />
-          <strong>About:</strong> Premier CDL driver lead provider serving carriers and recruiters since 2019. All leads are consent-verified with CDL Score integration.
+          {Object.entries(details).map(([key, value]) => (
+            <div key={key}><strong>{key}:</strong> {value || "—"}</div>
+          ))}
         </div></div>
       </div>
     </div>

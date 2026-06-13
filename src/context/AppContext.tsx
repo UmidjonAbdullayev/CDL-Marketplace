@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { fmtPrice, maskName } from "../lib/format";
+import { setActiveCompanyId } from "../lib/activeCompany";
 import {
   initSession,
   clearSession,
@@ -79,12 +80,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   const refreshUserState = useCallback(async () => {
-    if (!sessionUser) {
+    if (!sessionUser?.companyId) {
       setDataReady(true);
       setPurchased(new Set());
       setReserved(new Set());
       return;
     }
+    setActiveCompanyId(sessionUser.companyId);
     if (!isSupabaseConfigured) {
       setDataReady(true);
       return;
@@ -98,16 +100,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setDataReady(true);
     }
-  }, [sessionUser]);
+  }, [sessionUser?.companyId]);
 
   const signIn = useCallback((user: SessionUser) => {
     writeSession(user);
+    setActiveCompanyId(user.companyId || null);
     setSessionUser(user);
     setDataReady(false);
   }, []);
 
   const signOut = useCallback(() => {
     clearSession();
+    setActiveCompanyId(null);
     setSessionUser(null);
     setPurchased(new Set());
     setReserved(new Set());

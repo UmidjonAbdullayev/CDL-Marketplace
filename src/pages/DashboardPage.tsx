@@ -91,7 +91,7 @@ function sellerInitials(name: string) {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { showToast } = useApp();
+  const { showToast, sessionUser } = useApp();
   const {
     dashboard,
     dashboardLoading,
@@ -150,7 +150,7 @@ export default function DashboardPage() {
   return (
     <div className="page active dashboard-page">
       <div className="dash-head">
-        <h2>Welcome back, RapidHaul! 👋</h2>
+        <h2>Welcome back, {sessionUser?.name ?? "there"}! 👋</h2>
         <p>Here's what's happening in your marketplace today.</p>
       </div>
 

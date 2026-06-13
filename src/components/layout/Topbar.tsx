@@ -105,8 +105,9 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             <button onClick={() => navigate("/profile")}>View Profile</button>
             <button onClick={() => navigate("/pricing")}>Billing</button>
             <button onClick={() => navigate("/settings")}>Settings</button>
-            <button onClick={() => navigate("/admin")}>Admin Panel</button>
-            <button onClick={() => navigate("/register")}>Create account</button>
+            {sessionUser?.isAdmin ? (
+              <button onClick={() => navigate("/admin")}>Admin Panel</button>
+            ) : null}
             <div className="divider" />
             <button type="button" onClick={handleSignOut}>Sign Out</button>
           </div>

@@ -17,15 +17,25 @@ import {
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
+import { fmtPrice } from "../../lib/format";
 
-const SECTIONS = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  badgeKey?: "disputes" | "messages";
+  sellerOnly?: boolean;
+  buyerOnly?: boolean;
+};
+
+const SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: "Marketplace",
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/marketplace", label: "Marketplace", icon: Store },
-      { to: "/sell", label: "Sell / List Driver", icon: PlusCircle },
-      { to: "/my-listings", label: "My Listings", icon: FileText },
+      { to: "/sell", label: "Sell / List Driver", icon: PlusCircle, sellerOnly: true },
+      { to: "/my-listings", label: "My Listings", icon: FileText, sellerOnly: true },
       { to: "/ongoing-deals", label: "Ongoing Deals", icon: CheckCircle }
     ]
   },
@@ -33,14 +43,15 @@ const SECTIONS = [
     label: "Transactions",
     items: [
       { to: "/deals", label: "Deals / Escrow", icon: Handshake },
-      { to: "/disputes", label: "Disputes", icon: AlertTriangle, badgeKey: "disputes" as const },
-      { to: "/messages", label: "Messages", icon: MessageSquare, badgeKey: "messages" as const }
+      { to: "/disputes", label: "Disputes", icon: AlertTriangle, badgeKey: "disputes" },
+      { to: "/messages", label: "Messages", icon: MessageSquare, badgeKey: "messages" }
     ]
   },
   {
     label: "Account",
     items: [
-      { to: "/profile", label: "Company Profile", icon: Building2 },
+      { to: "/profile", label: "Recruiter Profile", icon: Building2, sellerOnly: true },
+      { to: "/profile", label: "Company Profile", icon: Building2, buyerOnly: true },
       { to: "/pricing", label: "Pricing / Billing", icon: CreditCard },
       { to: "/compliance", label: "Compliance Center", icon: ShieldCheck },
       { to: "/settings", label: "Settings", icon: Settings }
@@ -50,11 +61,21 @@ const SECTIONS = [
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () => void }) {
   const location = useLocation();
-  const { showToast } = useApp();
+  const { showToast, sessionUser } = useApp();
   const { badges } = useExchangeData();
+
+  const accountType = sessionUser?.accountType;
+  const isSeller = accountType === "agency" || accountType === "solo_recruiter";
 
   const isActive = (to: string) =>
     location.pathname === to || (to === "/dashboard" && location.pathname === "/");
+
+  const visibleItems = (items: NavItem[]) =>
+    items.filter((item) => {
+      if (item.sellerOnly && !isSeller) return false;
+      if (item.buyerOnly && isSeller) return false;
+      return true;
+    });
 
   return (
     <aside className={`sidebar ${open ? "open" : ""}`} id="sidebar">
@@ -68,33 +89,36 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () =
         </div>
       </div>
       <nav className="sidebar-nav">
-        {SECTIONS.map((section) => (
-          <div className="nav-section" key={section.label}>
-            <div className="nav-label">{section.label}</div>
-            {section.items.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.to);
-              const badgeKey = "badgeKey" in item ? item.badgeKey : null;
-              const badgeCount = badgeKey ? badges[badgeKey] : 0;
-              return (
-                <Link key={item.to} to={item.to} className={`nav-item ${active ? "active" : ""}`} onClick={onNavigate}>
-                  <span className="icon"><Icon /></span>
-                  {item.label}
-                  {badgeCount > 0 ? (
-                    <span className="nav-badge blue">{badgeCount}</span>
-                  ) : null}
-                  <ChevronRight className="nav-chevron" />
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+        {SECTIONS.map((section) => {
+          const items = visibleItems(section.items);
+          if (!items.length) return null;
+          return (
+            <div className="nav-section" key={section.label}>
+              <div className="nav-label">{section.label}</div>
+              {items.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.to);
+                const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+                return (
+                  <Link key={item.to} to={item.to} className={`nav-item ${active ? "active" : ""}`} onClick={onNavigate}>
+                    <span className="icon"><Icon /></span>
+                    {item.label}
+                    {badgeCount > 0 ? (
+                      <span className="nav-badge blue">{badgeCount}</span>
+                    ) : null}
+                    <ChevronRight className="nav-chevron" />
+                  </Link>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
       <div className="sidebar-wallet">
         <div className="wallet-card">
           <div className="wallet-balance-label">Wallet Balance</div>
-          <div className="wallet-balance">$4,280.00</div>
-          <button className="btn-deposit" type="button" onClick={() => showToast("Deposit funds (demo)", "success")}>
+          <div className="wallet-balance">{fmtPrice(sessionUser?.walletBalance ?? 0)}</div>
+          <button className="btn-deposit" type="button" onClick={() => showToast("Deposit funds", "success")}>
             Deposit Funds
           </button>
         </div>

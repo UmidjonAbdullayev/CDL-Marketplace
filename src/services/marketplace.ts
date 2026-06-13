@@ -1,4 +1,4 @@
-import { DEMO_BUYER_ID, DEMO_SELLER_ID } from "../lib/constants";
+import { getActiveCompanyId } from "../lib/activeCompany";
 import type { DriverType } from "../lib/driver-types";
 import { supabase } from "../lib/supabase";
 import type { Driver, DriverCard, HotListing, Paginated, ScoreFlag } from "../types";
@@ -250,7 +250,7 @@ export async function fetchPurchasedIds(): Promise<Set<number>> {
   const { data, error } = await supabase
     .from("purchases")
     .select("listing_id")
-    .eq("buyer_company_id", DEMO_BUYER_ID);
+    .eq("buyer_company_id", getActiveCompanyId());
   if (error) throw error;
   return new Set((data ?? []).map((p) => p.listing_id));
 }
@@ -260,7 +260,7 @@ export async function fetchReservedIds(): Promise<Set<number>> {
   const { data, error } = await supabase
     .from("reservations")
     .select("listing_id")
-    .eq("buyer_company_id", DEMO_BUYER_ID);
+    .eq("buyer_company_id", getActiveCompanyId());
   if (error) throw error;
   return new Set((data ?? []).map((r) => r.listing_id));
 }
@@ -287,7 +287,7 @@ export async function fetchPurchasesPage(
   const { data: purchases, error, count } = await supabase
     .from("purchases")
     .select("id, listing_id, amount, contact_status, recruit_status, notes, purchased_at", { count: "exact" })
-    .eq("buyer_company_id", DEMO_BUYER_ID)
+    .eq("buyer_company_id", getActiveCompanyId())
     .order("purchased_at", { ascending: false })
     .range(from, to);
   if (error) throw error;
@@ -320,7 +320,7 @@ export async function purchaseListing(listingId: number, amount: number): Promis
 
   const { error: purchaseErr } = await supabase.from("purchases").insert({
     listing_id: listingId,
-    buyer_company_id: DEMO_BUYER_ID,
+    buyer_company_id: getActiveCompanyId(),
     amount
   });
   if (purchaseErr) throw purchaseErr;
@@ -330,7 +330,7 @@ export async function purchaseListing(listingId: number, amount: number): Promis
     await supabase.from("deals").insert({
       id: dealId,
       listing_id: listingId,
-      buyer_company_id: DEMO_BUYER_ID,
+      buyer_company_id: getActiveCompanyId(),
       seller_company_id: sellerId,
       amount,
       status: "Contact Released",
@@ -354,7 +354,7 @@ export async function reserveListing(listingId: number): Promise<void> {
   expires.setHours(expires.getHours() + 48);
   const { error } = await supabase.from("reservations").insert({
     listing_id: listingId,
-    buyer_company_id: DEMO_BUYER_ID,
+    buyer_company_id: getActiveCompanyId(),
     fee: 25,
     expires_at: expires.toISOString()
   });
@@ -393,9 +393,11 @@ export async function fetchDealsPage(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  const companyId = getActiveCompanyId();
   const { data: deals, error, count } = await supabase
     .from("deals")
     .select("*", { count: "exact" })
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
     .order("created_at", { ascending: false })
     .range(from, to);
   if (error) throw error;
@@ -441,9 +443,11 @@ export async function updateDealStatus(dealId: string, status: string, escrowRel
 
 export async function fetchDealStats(period?: DashboardPeriod) {
   if (!supabase) return { inEscrow: 0, pendingPayment: 0, awaiting: 0, completed: 0 };
+  const companyId = getActiveCompanyId();
   const { data: allDeals } = await supabase
     .from("deals")
-    .select("status, escrow_amount, escrow_released, updated_at, created_at");
+    .select("status, escrow_amount, escrow_released, updated_at, created_at")
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
   const deals = allDeals ?? [];
   const completedInPeriod = period
     ? deals.filter(
@@ -477,9 +481,11 @@ export async function fetchDisputesPage(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  const companyId = getActiveCompanyId();
   const { data: disputes, error, count } = await supabase
     .from("disputes")
     .select("id, deal_id, reason, description, admin_status, resolution, filed_at, filed_by_company_id", { count: "exact" })
+    .eq("filed_by_company_id", companyId)
     .order("filed_at", { ascending: false })
     .range(from, to);
   if (error) throw error;
@@ -499,9 +505,11 @@ export async function fetchDisputesPage(
 /** Unpaginated count for dashboard badges */
 export async function fetchOpenDisputeCount(): Promise<number> {
   if (!supabase) return 0;
+  const companyId = getActiveCompanyId();
   const { count, error } = await supabase
     .from("disputes")
     .select("id", { count: "exact", head: true })
+    .eq("filed_by_company_id", companyId)
     .neq("admin_status", "Resolved");
   if (error) throw error;
   return count ?? 0;
@@ -515,7 +523,7 @@ export async function createDispute(dealId: string, reason: string, description:
     deal_id: dealId,
     reason,
     description,
-    filed_by_company_id: DEMO_BUYER_ID
+    filed_by_company_id: getActiveCompanyId()
   });
   if (error) throw error;
 }
@@ -554,6 +562,7 @@ export async function fetchConversationsPage(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  const companyId = getActiveCompanyId();
   const { data, error, count } = await supabase
     .from("conversations")
     .select(
@@ -561,7 +570,7 @@ export async function fetchConversationsPage(
       companies:companies!conversations_seller_company_id_fkey (name)`,
       { count: "exact" }
     )
-    .eq("buyer_company_id", DEMO_BUYER_ID)
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
     .order("last_message_at", { ascending: false })
     .range(from, to);
   if (error) throw error;
@@ -589,7 +598,7 @@ export async function sendMessage(conversationId: string, body: string): Promise
   if (!supabase) return;
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
-    sender_company_id: DEMO_BUYER_ID,
+    sender_company_id: getActiveCompanyId(),
     direction: "out",
     body
   });
@@ -620,7 +629,7 @@ export async function fetchSellerListingsPage(
   let q = supabase
     .from("driver_listings")
     .select("id, first_name, last_name, state, equipment, price, views, status", { count: "exact" })
-    .eq("seller_company_id", DEMO_SELLER_ID);
+    .eq("seller_company_id", getActiveCompanyId());
   if (status) q = q.eq("status", status);
 
   const { data, error, count } = await q.order("id").range(from, to);
@@ -633,7 +642,7 @@ export async function fetchSellerListingCounts() {
   const { data } = await supabase
     .from("driver_listings")
     .select("status")
-    .eq("seller_company_id", DEMO_SELLER_ID);
+    .eq("seller_company_id", getActiveCompanyId());
   const rows = data ?? [];
   return {
     active: rows.filter((r) => r.status === "active").length,
@@ -648,7 +657,7 @@ export async function fetchSellerReservations() {
   const { data: sellerListings } = await supabase
     .from("driver_listings")
     .select("id, first_name, last_name, price")
-    .eq("seller_company_id", DEMO_SELLER_ID);
+    .eq("seller_company_id", getActiveCompanyId());
   const listingIds = (sellerListings ?? []).map((l) => l.id);
   if (!listingIds.length) return [];
 
@@ -717,7 +726,7 @@ export async function createListing(input: NewListingInput): Promise<number> {
     notes: input.notes,
     price: input.price,
     documents: input.documents ?? ["CDL Copy"],
-    seller_company_id: DEMO_SELLER_ID,
+    seller_company_id: getActiveCompanyId(),
     status: "pending",
     verified: false,
     consent_verified: true
@@ -775,7 +784,7 @@ export async function fetchActivities(period?: DashboardPeriod) {
 
 export async function fetchFollowUps() {
   if (!supabase) return [];
-  const { data, error } = await supabase.from("follow_ups").select("*").eq("company_id", DEMO_BUYER_ID);
+  const { data, error } = await supabase.from("follow_ups").select("*").eq("company_id", getActiveCompanyId());
   if (error) throw error;
   return data ?? [];
 }
@@ -837,7 +846,7 @@ export async function fetchDealsForSelect(): Promise<{ id: string }[]> {
   const { data, error } = await supabase
     .from("deals")
     .select("id")
-    .eq("buyer_company_id", DEMO_BUYER_ID)
+    .eq("buyer_company_id", getActiveCompanyId())
     .in("status", ["Contact Released", "Orientation Scheduled", "Hired Confirmed", "Disputed"]);
   if (error) throw error;
   return data ?? [];

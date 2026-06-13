@@ -16,6 +16,76 @@ async function hashPassword(password: string): Promise<string> {
 
 export { hashPassword };
 
+function companyTypeForAccount(accountType: AccountType): "buyer" | "seller" {
+  return accountType === "carrier" ? "buyer" : "seller";
+}
+
+function companyNameFromAccount(account: RegistrationAccount): string {
+  const p = account.profile_data;
+  if (account.account_type === "carrier") return (p as { companyName: string }).companyName;
+  if (account.account_type === "agency") return (p as { agencyName: string }).agencyName;
+  return (p as { fullName: string }).fullName;
+}
+
+async function createCompanyForAccount(account: RegistrationAccount): Promise<string> {
+  if (!supabase) throw new Error("Supabase not configured");
+
+  let name = companyNameFromAccount(account).trim();
+  if (!name) name = account.email.split("@")[0];
+
+  const basePayload = {
+    company_type: companyTypeForAccount(account.account_type),
+    wallet_balance: 0,
+    rating: 4,
+    leads_sold: 0,
+    refund_rate: 0,
+    status: "active"
+  };
+
+  let { data, error } = await supabase
+    .from("companies")
+    .insert({ name, ...basePayload })
+    .select("id")
+    .single();
+
+  if (error?.code === "23505") {
+    name = `${name} (${account.id.slice(0, 8)})`;
+    ({ data, error } = await supabase.from("companies").insert({ name, ...basePayload }).select("id").single());
+  }
+
+  if (error || !data) throw error ?? new Error("Failed to create company");
+  return data.id;
+}
+
+export async function ensureCompanyForAccount(account: RegistrationAccount): Promise<RegistrationAccount> {
+  if (!supabase) return account;
+
+  const { data: row, error } = await supabase
+    .from("registration_accounts")
+    .select("company_id, is_admin")
+    .eq("id", account.id)
+    .single();
+  if (error) throw error;
+
+  if (row?.company_id) {
+    return { ...account, company_id: row.company_id, is_admin: Boolean(row.is_admin) };
+  }
+
+  const companyId = await createCompanyForAccount(account);
+  const { error: updateErr } = await supabase
+    .from("registration_accounts")
+    .update({ company_id: companyId, updated_at: new Date().toISOString() })
+    .eq("id", account.id);
+  if (updateErr) throw updateErr;
+
+  return { ...account, company_id: companyId, is_admin: Boolean(row?.is_admin) };
+}
+
+export async function buildSessionAccount(account: RegistrationAccount): Promise<RegistrationAccount> {
+  const enriched = await ensureCompanyForAccount(account);
+  return enriched;
+}
+
 function resolveStatus(accountType: AccountType, plan?: CarrierPlanId): RegistrationStatus {
   if (accountType === "carrier") {
     if (!plan || plan === "free") return "active_preview";
@@ -56,6 +126,8 @@ export async function submitRegistration(
       mc_verified: false,
       profile_verified: false,
       suspended: false,
+      company_id: null,
+      is_admin: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -85,7 +157,8 @@ export async function submitRegistration(
     .single();
 
   if (error) throw error;
-  return { id: data.id, status: data.status as RegistrationStatus, account: data as RegistrationAccount };
+  const account = await ensureCompanyForAccount(data as RegistrationAccount);
+  return { id: account.id, status: account.status as RegistrationStatus, account };
 }
 
 export async function authenticateRegistration(
@@ -110,7 +183,7 @@ export async function authenticateRegistration(
   if (account.suspended || account.status === "rejected") {
     throw new Error(account.status === "rejected" ? "Account was rejected" : "Account is suspended");
   }
-  return account;
+  return ensureCompanyForAccount(account);
 }
 
 export async function fetchRegistrationById(id: string): Promise<RegistrationAccount | null> {
