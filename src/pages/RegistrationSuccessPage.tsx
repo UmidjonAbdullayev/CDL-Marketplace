@@ -1,5 +1,7 @@
 import { CheckCircle2, CreditCard, Eye, Truck } from "lucide-react";
+import { useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useApp } from "../context/AppContext";
 import type { AccountType, CarrierPlanId, RegistrationStatus } from "../types/registration";
 
 type SuccessState = {
@@ -11,7 +13,14 @@ type SuccessState = {
 export default function RegistrationSuccessPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isSignedIn } = useApp();
   const state = location.state as SuccessState | null;
+
+  useEffect(() => {
+    if (!state && !isSignedIn) {
+      navigate("/register", { replace: true });
+    }
+  }, [state, isSignedIn, navigate]);
 
   if (!state) {
     return (

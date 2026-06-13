@@ -3,9 +3,8 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { fmtPrice, maskName } from "../lib/format";
 import {
-  bootstrapSession,
+  initSession,
   clearSession,
-  DEMO_SESSION,
   writeSession,
   type SessionUser
 } from "../lib/session";
@@ -42,7 +41,7 @@ interface AppContextValue {
   dataReady: boolean;
   sessionUser: SessionUser | null;
   isSignedIn: boolean;
-  signIn: (user?: SessionUser) => void;
+  signIn: (user: SessionUser) => void;
   signOut: () => void;
   toasts: ToastItem[];
   modal: ModalState;
@@ -65,7 +64,7 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [sessionUser, setSessionUser] = useState<SessionUser | null>(() => bootstrapSession());
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(() => initSession());
   const [purchased, setPurchased] = useState<Set<number>>(new Set());
   const [reserved, setReserved] = useState<Set<number>>(new Set());
   const [dataReady, setDataReady] = useState(!isSupabaseConfigured);
@@ -101,7 +100,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionUser]);
 
-  const signIn = useCallback((user: SessionUser = DEMO_SESSION) => {
+  const signIn = useCallback((user: SessionUser) => {
     writeSession(user);
     setSessionUser(user);
     setDataReady(false);

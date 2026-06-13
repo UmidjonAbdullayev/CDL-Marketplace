@@ -20,6 +20,7 @@ import DealWorkspacePage from "./pages/DealWorkspacePage";
 import OngoingDealsPage from "./pages/OngoingDealsPage";
 import RegisterPage from "./pages/RegisterPage";
 import RegistrationSuccessPage from "./pages/RegistrationSuccessPage";
+import HomeRedirect from "./components/HomeRedirect";
 
 export default function App() {
   return (
@@ -30,7 +31,7 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/register/success" element={<RegistrationSuccessPage />} />
             <Route element={<AppShell />}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<HomeRedirect />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/marketplace" element={<MarketplacePage />} />
             <Route path="/driver/:id" element={<DriverDetailPage />} />

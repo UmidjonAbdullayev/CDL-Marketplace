@@ -14,6 +14,8 @@ async function hashPassword(password: string): Promise<string> {
     .join("");
 }
 
+export { hashPassword };
+
 function resolveStatus(accountType: AccountType, plan?: CarrierPlanId): RegistrationStatus {
   if (accountType === "carrier") {
     if (!plan || plan === "free") return "active_preview";
@@ -23,19 +25,41 @@ function resolveStatus(accountType: AccountType, plan?: CarrierPlanId): Registra
 }
 
 function resolveEmail(payload: RegistrationPayload): string {
-  if (payload.accountType === "solo_recruiter") {
-    return (payload.profile as { email: string }).email;
-  }
-  return (payload.profile as { companyEmail: string }).companyEmail;
+  const raw =
+    payload.accountType === "solo_recruiter"
+      ? (payload.profile as { email: string }).email
+      : (payload.profile as { companyEmail: string }).companyEmail;
+  return raw.trim().toLowerCase();
 }
 
 export async function submitRegistration(
   payload: RegistrationPayload,
   audit: { ip?: string; userAgent?: string }
-): Promise<{ id: string; status: RegistrationStatus }> {
+): Promise<{ id: string; status: RegistrationStatus; account: RegistrationAccount }> {
   if (!supabase) {
     const id = crypto.randomUUID();
-    return { id, status: resolveStatus(payload.accountType, payload.selectedPlan) };
+    const status = resolveStatus(payload.accountType, payload.selectedPlan);
+    const email = resolveEmail(payload);
+    const account: RegistrationAccount = {
+      id,
+      account_type: payload.accountType,
+      status,
+      selected_plan: payload.accountType === "carrier" ? payload.selectedPlan ?? "free" : null,
+      email,
+      profile_data: payload.profile,
+      policy_accepted: payload.policyAccepted,
+      policy_accepted_at: new Date().toISOString(),
+      policy_version: payload.policyVersion,
+      accepted_ip_address: audit.ip ?? null,
+      accepted_user_agent: audit.userAgent ?? null,
+      rejection_reason: null,
+      mc_verified: false,
+      profile_verified: false,
+      suspended: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    return { id, status, account };
   }
 
   const password_hash = await hashPassword(payload.password);
@@ -57,11 +81,43 @@ export async function submitRegistration(
       accepted_ip_address: audit.ip ?? null,
       accepted_user_agent: audit.userAgent ?? null
     })
-    .select("id, status")
+    .select("*")
     .single();
 
   if (error) throw error;
-  return { id: data.id, status: data.status as RegistrationStatus };
+  return { id: data.id, status: data.status as RegistrationStatus, account: data as RegistrationAccount };
+}
+
+export async function authenticateRegistration(
+  email: string,
+  password: string
+): Promise<RegistrationAccount | null> {
+  if (!supabase) return null;
+
+  const password_hash = await hashPassword(password);
+  const normalized = email.trim().toLowerCase();
+  const { data, error } = await supabase
+    .from("registration_accounts")
+    .select("*")
+    .ilike("email", normalized)
+    .eq("password_hash", password_hash)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  const account = data as RegistrationAccount;
+  if (account.suspended || account.status === "rejected") {
+    throw new Error(account.status === "rejected" ? "Account was rejected" : "Account is suspended");
+  }
+  return account;
+}
+
+export async function fetchRegistrationById(id: string): Promise<RegistrationAccount | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from("registration_accounts").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data as RegistrationAccount | null;
 }
 
 export async function fetchRegistrationAccounts(): Promise<RegistrationAccount[]> {

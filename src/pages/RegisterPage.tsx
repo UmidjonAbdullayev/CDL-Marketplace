@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Loader2, ShieldCheck, Truck } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Loader2, LogIn, ShieldCheck, Truck } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ToastContainer } from "../components/layout/ToastContainer";
 import { AccountTypeSelector } from "../components/registration/AccountTypeSelector";
 import { AgencyRegistrationForm } from "../components/registration/AgencyRegistrationForm";
@@ -11,8 +11,9 @@ import { RegistrationProgress } from "../components/registration/RegistrationPro
 import { SoloRecruiterRegistrationForm } from "../components/registration/SoloRecruiterRegistrationForm";
 import { useApp } from "../context/AppContext";
 import { POLICY_VERSION } from "../lib/policies";
-import { validateProfileStep, type FieldErrors } from "../lib/registration-validation";
-import { submitRegistration } from "../services/registration";
+import { validateEmail, validateProfileStep, type FieldErrors } from "../lib/registration-validation";
+import { sessionFromAccount } from "../lib/session";
+import { authenticateRegistration, submitRegistration } from "../services/registration";
 import type {
   AccountType,
   AgencyProfile,
@@ -20,6 +21,8 @@ import type {
   CarrierProfile,
   SoloRecruiterProfile
 } from "../types/registration";
+
+type PageMode = "register" | "login";
 
 const EMPTY_CARRIER: CarrierProfile = {
   companyName: "",
@@ -69,6 +72,7 @@ export default function RegisterPage() {
   const location = useLocation();
   const { showToast, signIn, isSignedIn } = useApp();
 
+  const [mode, setMode] = useState<PageMode>("register");
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [carrierProfile, setCarrierProfile] = useState<CarrierProfile>(EMPTY_CARRIER);
@@ -81,6 +85,21 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  const signedOut = Boolean((location.state as { signedOut?: boolean } | null)?.signedOut);
+
+  useEffect(() => {
+    if (isSignedIn) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isSignedIn, navigate]);
+
+  useEffect(() => {
+    if (signedOut) setMode("login");
+  }, [signedOut]);
 
   const profile = useMemo(() => {
     if (accountType === "carrier") return carrierProfile;
@@ -122,7 +141,12 @@ export default function RegisterPage() {
         {
           accountType,
           selectedPlan: accountType === "carrier" ? selectedPlan : undefined,
-          email: accountType === "solo_recruiter" ? soloProfile.email : accountType === "carrier" ? carrierProfile.companyEmail : agencyProfile.companyEmail,
+          email:
+            accountType === "solo_recruiter"
+              ? soloProfile.email
+              : accountType === "carrier"
+                ? carrierProfile.companyEmail
+                : agencyProfile.companyEmail,
           password,
           profile,
           policyAccepted,
@@ -130,8 +154,13 @@ export default function RegisterPage() {
         },
         { userAgent: navigator.userAgent }
       );
+      signIn(sessionFromAccount(result.account));
       navigate("/register/success", {
-        state: { accountType, status: result.status, plan: accountType === "carrier" ? selectedPlan : null }
+        state: {
+          accountType,
+          status: result.status,
+          plan: accountType === "carrier" ? selectedPlan : null
+        }
       });
     } catch {
       setSubmitError("Registration failed. Please try again.");
@@ -141,28 +170,36 @@ export default function RegisterPage() {
     }
   };
 
-  const signedOut = Boolean((location.state as { signedOut?: boolean } | null)?.signedOut);
-
-  const handleSignIn = () => {
-    signIn();
-    showToast("Signed in successfully", "success");
-    navigate("/dashboard");
+  const handleLogin = async () => {
+    const emailErr = validateEmail(loginEmail);
+    if (emailErr) {
+      setLoginError(emailErr);
+      return;
+    }
+    if (!loginPassword) {
+      setLoginError("Password is required");
+      return;
+    }
+    setSubmitting(true);
+    setLoginError("");
+    try {
+      const account = await authenticateRegistration(loginEmail, loginPassword);
+      if (!account) {
+        setLoginError("Invalid email or password");
+        showToast("Invalid email or password", "error");
+        return;
+      }
+      signIn(sessionFromAccount(account));
+      showToast(`Welcome back, ${sessionFromAccount(account).name}`, "success");
+      navigate("/dashboard");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Sign in failed";
+      setLoginError(msg);
+      showToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
   };
-
-  if (isSignedIn) {
-    return (
-      <div className="register-page">
-        <div className="register-main" style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
-          <div className="register-card card" style={{ maxWidth: 420, textAlign: "center" }}>
-            <h2 className="t-page">You are signed in</h2>
-            <p className="t-secondary" style={{ margin: "12px 0 20px" }}>Continue to your dashboard or sign out from the profile menu.</p>
-            <button type="button" className="btn btn-primary" onClick={() => navigate("/dashboard")}>Go to dashboard</button>
-          </div>
-        </div>
-        <ToastContainer />
-      </div>
-    );
-  }
 
   return (
     <div className="register-page">
@@ -185,147 +222,216 @@ export default function RegisterPage() {
             <li><ShieldCheck className="icon-sm" /> Anti-circumvention enforcement</li>
             <li><ShieldCheck className="icon-sm" /> Verified recruiting agreements</li>
           </ul>
-          <button type="button" className="register-brand-link" onClick={handleSignIn}>Already have an account? Sign in</button>
+          <button
+            type="button"
+            className="register-brand-link"
+            onClick={() => setMode(mode === "login" ? "register" : "login")}
+          >
+            {mode === "login" ? "Need an account? Create one" : "Already have an account? Sign in"}
+          </button>
         </div>
       </div>
 
-      <div className="register-main scroll-y">
+      <div className="register-main">
         <div className="register-card card">
-          <div className="register-card-head">
-            <h2 className="t-page">Create your account</h2>
-            <p className="t-secondary">Join CDL Exchange as a carrier, agency, or solo recruiter</p>
-            {signedOut ? (
-              <p className="reg-signed-out-notice">You have been signed out. Sign in again or create a new account.</p>
-            ) : null}
+          <div className="register-mode-tabs">
+            <button
+              type="button"
+              className={`register-mode-tab ${mode === "login" ? "active" : ""}`}
+              onClick={() => setMode("login")}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              className={`register-mode-tab ${mode === "register" ? "active" : ""}`}
+              onClick={() => setMode("register")}
+            >
+              Create account
+            </button>
           </div>
 
-          <RegistrationProgress current={step} />
-
-          {step === 1 ? (
-            <section>
-              <h3 className="t-card" style={{ marginBottom: 12 }}>Choose account type</h3>
-              <AccountTypeSelector value={accountType} onChange={setAccountType} />
-            </section>
-          ) : null}
-
-          {step === 2 && accountType === "carrier" ? (
-            <section>
-              <h3 className="t-card" style={{ marginBottom: 12 }}>Carrier profile</h3>
-              <CarrierRegistrationForm
-                value={carrierProfile}
-                errors={errors}
-                password={password}
-                confirmPassword={confirmPassword}
-                onChange={(p) => setCarrierProfile((v) => ({ ...v, ...p }))}
-                onPasswordChange={setPassword}
-                onConfirmChange={setConfirmPassword}
-              />
-            </section>
-          ) : null}
-
-          {step === 2 && accountType === "agency" ? (
-            <section>
-              <h3 className="t-card" style={{ marginBottom: 12 }}>Agency profile</h3>
-              <AgencyRegistrationForm
-                value={agencyProfile}
-                errors={errors}
-                password={password}
-                confirmPassword={confirmPassword}
-                onChange={(p) => setAgencyProfile((v) => ({ ...v, ...p }))}
-                onPasswordChange={setPassword}
-                onConfirmChange={setConfirmPassword}
-              />
-            </section>
-          ) : null}
-
-          {step === 2 && accountType === "solo_recruiter" ? (
-            <section>
-              <h3 className="t-card" style={{ marginBottom: 12 }}>Solo recruiter profile</h3>
-              <SoloRecruiterRegistrationForm
-                value={soloProfile}
-                errors={errors}
-                password={password}
-                confirmPassword={confirmPassword}
-                onChange={(p) => setSoloProfile((v) => ({ ...v, ...p }))}
-                onPasswordChange={setPassword}
-                onConfirmChange={setConfirmPassword}
-              />
-            </section>
-          ) : null}
-
-          {step === 3 && accountType === "carrier" ? (
-            <section>
-              <h3 className="t-card" style={{ marginBottom: 8 }}>Select your plan</h3>
-              <p className="t-secondary" style={{ marginBottom: 16 }}>Choose how you want to access the marketplace and CRM tools.</p>
-              <CarrierPlanSelector value={selectedPlan} onChange={setSelectedPlan} />
-            </section>
-          ) : null}
-
-          {step === 3 && accountType === "agency" ? (
-            <section className="permissions-info card" style={{ padding: 16, background: "var(--bg)" }}>
-              <h3 className="t-card" style={{ marginBottom: 8 }}>Agency permissions</h3>
-              <p className="t-secondary">After admin review, approved agencies can list consent-verified driver leads, manage reservations, and participate in hiring workspaces. Listing fees and commission terms apply per completed placements.</p>
-            </section>
-          ) : null}
-
-          {step === 3 && accountType === "solo_recruiter" ? (
-            <section className="permissions-info card" style={{ padding: 16, background: "var(--bg)" }}>
-              <h3 className="t-card" style={{ marginBottom: 8 }}>Solo recruiter permissions</h3>
-              <p className="t-secondary">After review, solo recruiters can list individual driver leads and collaborate with carriers through platform contracts, messaging, and document exchange.</p>
-            </section>
-          ) : null}
-
-          {step === 4 ? (
-            <section>
-              <h3 className="t-card" style={{ marginBottom: 12 }}>Platform policies</h3>
-              <p className="t-secondary" style={{ marginBottom: 16 }}>
-                CDL Exchange requires all users to accept marketplace safety policies before registration.
-              </p>
-              <PolicyAgreementCheckbox checked={policyAccepted} onChange={setPolicyAccepted} />
-            </section>
-          ) : null}
-
-          {step === 5 ? (
-            <section>
-              <h3 className="t-card" style={{ marginBottom: 12 }}>Review &amp; submit</h3>
-              <div className="reg-review-summary">
-                <div><span className="t-secondary">Account type</span><strong>{accountType?.replace("_", " ")}</strong></div>
-                {accountType === "carrier" ? <div><span className="t-secondary">Plan</span><strong>{selectedPlan}</strong></div> : null}
-                <div><span className="t-secondary">Policy version</span><strong>{POLICY_VERSION}</strong></div>
-                <div><span className="t-secondary">Policies accepted</span><strong>{policyAccepted ? "Yes" : "No"}</strong></div>
+          {mode === "login" ? (
+            <div className="login-form-panel">
+              <div className="register-card-head">
+                <h2 className="t-page">Sign in to your account</h2>
+                <p className="t-secondary">Use the email and password from your registration</p>
+                {signedOut ? (
+                  <p className="reg-signed-out-notice">You have been signed out. Sign in to continue.</p>
+                ) : null}
               </div>
-              {submitError ? <p className="field-error" style={{ marginTop: 12 }}>{submitError}</p> : null}
-            </section>
-          ) : null}
+              <div className={`form-group ${loginError && !loginEmail ? "has-error" : ""}`}>
+                <label htmlFor="loginEmail">Email</label>
+                <input
+                  id="loginEmail"
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                />
+              </div>
+              <div className={`form-group ${loginError && !loginPassword ? "has-error" : ""}`}>
+                <label htmlFor="loginPassword">Password</label>
+                <input
+                  id="loginPassword"
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  autoComplete="current-password"
+                  onKeyDown={(e) => e.key === "Enter" && void handleLogin()}
+                />
+              </div>
+              {loginError ? <p className="field-error" style={{ marginBottom: 12 }}>{loginError}</p> : null}
+              <button
+                type="button"
+                className="btn btn-primary btn-block"
+                disabled={submitting}
+                onClick={() => void handleLogin()}
+              >
+                {submitting ? <><Loader2 className="icon-sm spin" /> Signing in...</> : <><LogIn className="icon-sm" /> Sign in</>}
+              </button>
+              <p className="t-caption t-secondary" style={{ marginTop: 16, textAlign: "center" }}>
+                New to CDL Exchange?{" "}
+                <button type="button" className="policy-link" onClick={() => setMode("register")}>Create an account</button>
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="register-card-head">
+                <h2 className="t-page">Create your account</h2>
+                <p className="t-secondary">Join CDL Exchange as a carrier, agency, or solo recruiter</p>
+              </div>
 
-          <div className="register-actions">
-            {step > 1 ? (
-              <button type="button" className="btn btn-secondary" onClick={goBack}>
-                <ArrowLeft className="icon-sm" /> Back
-              </button>
-            ) : (
-              <Link to="/dashboard" className="btn btn-ghost"><ArrowLeft className="icon-sm" /> Home</Link>
-            )}
-            {step < 5 ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={goNext}
-                disabled={(step === 1 && !canContinueStep1) || (step === 4 && !policyAccepted)}
-              >
-                Continue <ArrowRight className="icon-sm" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!policyAccepted || submitting}
-                onClick={() => void handleSubmit()}
-              >
-                {submitting ? <><Loader2 className="icon-sm spin" /> Creating account...</> : "Create account"}
-              </button>
-            )}
-          </div>
+              <RegistrationProgress current={step} />
+
+              {step === 1 ? (
+                <section>
+                  <h3 className="t-card" style={{ marginBottom: 12 }}>Choose account type</h3>
+                  <AccountTypeSelector value={accountType} onChange={setAccountType} />
+                </section>
+              ) : null}
+
+              {step === 2 && accountType === "carrier" ? (
+                <section>
+                  <h3 className="t-card" style={{ marginBottom: 12 }}>Carrier profile</h3>
+                  <CarrierRegistrationForm
+                    value={carrierProfile}
+                    errors={errors}
+                    password={password}
+                    confirmPassword={confirmPassword}
+                    onChange={(p) => setCarrierProfile((v) => ({ ...v, ...p }))}
+                    onPasswordChange={setPassword}
+                    onConfirmChange={setConfirmPassword}
+                  />
+                </section>
+              ) : null}
+
+              {step === 2 && accountType === "agency" ? (
+                <section>
+                  <h3 className="t-card" style={{ marginBottom: 12 }}>Agency profile</h3>
+                  <AgencyRegistrationForm
+                    value={agencyProfile}
+                    errors={errors}
+                    password={password}
+                    confirmPassword={confirmPassword}
+                    onChange={(p) => setAgencyProfile((v) => ({ ...v, ...p }))}
+                    onPasswordChange={setPassword}
+                    onConfirmChange={setConfirmPassword}
+                  />
+                </section>
+              ) : null}
+
+              {step === 2 && accountType === "solo_recruiter" ? (
+                <section>
+                  <h3 className="t-card" style={{ marginBottom: 12 }}>Solo recruiter profile</h3>
+                  <SoloRecruiterRegistrationForm
+                    value={soloProfile}
+                    errors={errors}
+                    password={password}
+                    confirmPassword={confirmPassword}
+                    onChange={(p) => setSoloProfile((v) => ({ ...v, ...p }))}
+                    onPasswordChange={setPassword}
+                    onConfirmChange={setConfirmPassword}
+                  />
+                </section>
+              ) : null}
+
+              {step === 3 && accountType === "carrier" ? (
+                <section>
+                  <h3 className="t-card" style={{ marginBottom: 8 }}>Select your plan</h3>
+                  <p className="t-secondary" style={{ marginBottom: 16 }}>Choose how you want to access the marketplace and CRM tools.</p>
+                  <CarrierPlanSelector value={selectedPlan} onChange={setSelectedPlan} />
+                </section>
+              ) : null}
+
+              {step === 3 && accountType === "agency" ? (
+                <section className="permissions-info card" style={{ padding: 16, background: "var(--bg)" }}>
+                  <h3 className="t-card" style={{ marginBottom: 8 }}>Agency permissions</h3>
+                  <p className="t-secondary">After admin review, approved agencies can list consent-verified driver leads, manage reservations, and participate in hiring workspaces.</p>
+                </section>
+              ) : null}
+
+              {step === 3 && accountType === "solo_recruiter" ? (
+                <section className="permissions-info card" style={{ padding: 16, background: "var(--bg)" }}>
+                  <h3 className="t-card" style={{ marginBottom: 8 }}>Solo recruiter permissions</h3>
+                  <p className="t-secondary">After review, solo recruiters can list individual driver leads and collaborate with carriers through platform contracts.</p>
+                </section>
+              ) : null}
+
+              {step === 4 ? (
+                <section>
+                  <h3 className="t-card" style={{ marginBottom: 12 }}>Platform policies</h3>
+                  <p className="t-secondary" style={{ marginBottom: 16 }}>
+                    CDL Exchange requires all users to accept marketplace safety policies before registration.
+                  </p>
+                  <PolicyAgreementCheckbox checked={policyAccepted} onChange={setPolicyAccepted} />
+                </section>
+              ) : null}
+
+              {step === 5 ? (
+                <section>
+                  <h3 className="t-card" style={{ marginBottom: 12 }}>Review &amp; submit</h3>
+                  <div className="reg-review-summary">
+                    <div><span className="t-secondary">Account type</span><strong>{accountType?.replace("_", " ")}</strong></div>
+                    {accountType === "carrier" ? <div><span className="t-secondary">Plan</span><strong>{selectedPlan}</strong></div> : null}
+                    <div><span className="t-secondary">Policy version</span><strong>{POLICY_VERSION}</strong></div>
+                    <div><span className="t-secondary">Policies accepted</span><strong>{policyAccepted ? "Yes" : "No"}</strong></div>
+                  </div>
+                  {submitError ? <p className="field-error" style={{ marginTop: 12 }}>{submitError}</p> : null}
+                </section>
+              ) : null}
+
+              <div className="register-actions">
+                {step > 1 ? (
+                  <button type="button" className="btn btn-secondary" onClick={goBack}>
+                    <ArrowLeft className="icon-sm" /> Back
+                  </button>
+                ) : (
+                  <span />
+                )}
+                {step < 5 ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={goNext}
+                    disabled={(step === 1 && !canContinueStep1) || (step === 4 && !policyAccepted)}
+                  >
+                    Continue <ArrowRight className="icon-sm" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!policyAccepted || submitting}
+                    onClick={() => void handleSubmit()}
+                  >
+                    {submitting ? <><Loader2 className="icon-sm spin" /> Creating account...</> : "Create account"}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
       <ToastContainer />

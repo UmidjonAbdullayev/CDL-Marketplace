@@ -1,3 +1,4 @@
+import type { AccountType, RegistrationAccount, RegistrationStatus } from "../types/registration";
 import { DEMO_BUYER_ID } from "./constants";
 
 export type SessionUser = {
@@ -5,17 +6,59 @@ export type SessionUser = {
   name: string;
   plan: string;
   initials: string;
+  email: string;
+  accountType: AccountType;
+  status: RegistrationStatus;
 };
 
 const SESSION_KEY = "cdl_exchange_session";
-const SIGNED_OUT_KEY = "cdl_exchange_signed_out";
 
-export const DEMO_SESSION: SessionUser = {
-  id: DEMO_BUYER_ID,
-  name: "RapidHaul Recruiting",
-  plan: "Pro Plan",
-  initials: "RH"
+const PLAN_LABELS: Record<string, string> = {
+  free: "Free Preview",
+  starter: "Starter Plan",
+  growth: "Growth Plan",
+  pro_fleet: "Pro / Fleet Plan"
 };
+
+const STATUS_LABELS: Record<string, string> = {
+  active_preview: "Free Preview",
+  pending_payment: "Payment Pending",
+  pending_review: "Pending Review",
+  active: "Active",
+  rejected: "Rejected",
+  suspended: "Suspended"
+};
+
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "—";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function accountDisplayName(account: RegistrationAccount): string {
+  const p = account.profile_data;
+  if (account.account_type === "carrier") return (p as { companyName: string }).companyName;
+  if (account.account_type === "agency") return (p as { agencyName: string }).agencyName;
+  return (p as { fullName: string }).fullName;
+}
+
+export function sessionFromAccount(account: RegistrationAccount): SessionUser {
+  const name = accountDisplayName(account);
+  const plan = account.selected_plan
+    ? PLAN_LABELS[account.selected_plan] ?? account.selected_plan
+    : STATUS_LABELS[account.status] ?? "Member";
+
+  return {
+    id: account.id,
+    name,
+    plan,
+    initials: initialsFromName(name),
+    email: account.email,
+    accountType: account.account_type,
+    status: account.status
+  };
+}
 
 export function readSession(): SessionUser | null {
   try {
@@ -29,22 +72,19 @@ export function readSession(): SessionUser | null {
 
 export function writeSession(user: SessionUser): void {
   localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-  localStorage.removeItem(SIGNED_OUT_KEY);
 }
 
 export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
-  localStorage.setItem(SIGNED_OUT_KEY, "1");
 }
 
-export function bootstrapSession(): SessionUser | null {
-  const existing = readSession();
-  if (existing) return existing;
-  if (localStorage.getItem(SIGNED_OUT_KEY) === "1") return null;
-  writeSession(DEMO_SESSION);
-  return DEMO_SESSION;
-}
-
-export function isSignedOut(): boolean {
-  return localStorage.getItem(SIGNED_OUT_KEY) === "1" && !readSession();
+export function initSession(): SessionUser | null {
+  const user = readSession();
+  if (!user) return null;
+  // Drop legacy auto-demo sessions from older builds
+  if (!user.email || user.id === DEMO_BUYER_ID) {
+    clearSession();
+    return null;
+  }
+  return user;
 }
