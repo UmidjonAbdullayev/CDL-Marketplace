@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MessengerPanel } from "../components/chat/MessengerPanel";
 import { Pagination } from "../components/ui/Pagination";
 import { PageHeader } from "../lib/badges";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
-import { isOwnInboxMessage } from "../services/marketplace";
-import { DEFAULT_PAGE_SIZE } from "../services/marketplace";
+import {
+  DEFAULT_PAGE_SIZE,
+  fetchConversationMessages,
+  isOwnInboxMessage,
+  sendConversationFile,
+  sendMessage,
+  subscribeConversationMessages,
+  type MessageRow
+} from "../services/marketplace";
 
 function formatMsgTime(iso: string) {
   const d = new Date(iso);
@@ -16,7 +23,7 @@ function formatMsgTime(iso: string) {
 }
 
 export default function MessagesPage() {
-  const { sessionUser } = useApp();
+  const { sessionUser, showToast } = useApp();
   const {
     messagesPage: page,
     setMessagesPage: setPage,
@@ -27,13 +34,13 @@ export default function MessagesPage() {
     conversationsRefreshing: listRefreshing,
     activeConversationId: active,
     selectConversation: setActive,
-    conversationMessages: messages,
-    messagesLoading,
-    sendConversationMessage
+    refreshConversations
   } = useExchangeData();
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeConv = useMemo(
@@ -43,6 +50,102 @@ export default function MessagesPage() {
 
   const myCompanyId = sessionUser?.companyId ?? "";
   const buyerCompanyId = activeConv?.buyer_company_id ?? "";
+  const conversationId = activeConv?.id ?? null;
+
+  const pullMessages = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      setMessages(await fetchConversationMessages(conversationId));
+    } catch {
+      /* background refresh */
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setMessages([]);
+      return;
+    }
+    setMessagesLoading(true);
+    void pullMessages().finally(() => setMessagesLoading(false));
+  }, [conversationId, pullMessages]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const interval = window.setInterval(() => void pullMessages(), 3000);
+    const unsub = subscribeConversationMessages(conversationId, () => void pullMessages());
+    return () => {
+      window.clearInterval(interval);
+      unsub();
+    };
+  }, [conversationId, pullMessages]);
+
+  const mergeMessage = (saved: MessageRow, tempId: string) => {
+    setMessages((prev) => {
+      const withoutTemp = prev.filter((m) => m.id !== tempId);
+      if (withoutTemp.some((m) => m.id === saved.id)) return withoutTemp;
+      return [...withoutTemp, saved];
+    });
+  };
+
+  const send = async () => {
+    if (!input.trim() || !conversationId || !activeConv || sending) return;
+    const text = input.trim();
+    setInput("");
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: MessageRow = {
+      id: tempId,
+      direction: myCompanyId === buyerCompanyId ? "out" : "in",
+      body: text,
+      created_at: new Date().toISOString(),
+      sender_company_id: myCompanyId,
+      attachment_name: null,
+      attachment_path: null,
+      attachment_url: null
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setSending(true);
+    try {
+      const saved = await sendMessage(conversationId, text);
+      if (saved) mergeMessage(saved, tempId);
+      else void pullMessages();
+      void refreshConversations(true);
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      showToast("Failed to send message", "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const shareFile = async (file: File) => {
+    if (!conversationId || !activeConv || sending) return;
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: MessageRow = {
+      id: tempId,
+      direction: myCompanyId === buyerCompanyId ? "out" : "in",
+      body: `Shared file: ${file.name}`,
+      created_at: new Date().toISOString(),
+      sender_company_id: myCompanyId,
+      attachment_name: file.name,
+      attachment_path: null,
+      attachment_url: null
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setSending(true);
+    try {
+      const saved = await sendConversationFile(conversationId, file);
+      if (saved) mergeMessage(saved, tempId);
+      else void pullMessages();
+      void refreshConversations(true);
+      showToast(`Shared: ${file.name}`, "success");
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      showToast("Failed to share file", "error");
+    } finally {
+      setSending(false);
+    }
+  };
 
   const bubbles = useMemo(
     () =>
@@ -51,26 +154,12 @@ export default function MessagesPage() {
         body: m.body,
         isMine: isOwnInboxMessage(m, myCompanyId, buyerCompanyId),
         attachmentName: m.attachment_name,
+        attachmentPath: m.attachment_path,
+        attachmentUrl: m.attachment_url,
         timeLabel: formatMsgTime(m.created_at)
       })),
     [messages, myCompanyId, buyerCompanyId]
   );
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, activeConv?.id]);
-
-  const send = async () => {
-    if (!input.trim() || !activeConv || sending) return;
-    const text = input.trim();
-    setInput("");
-    setSending(true);
-    try {
-      await sendConversationMessage(text);
-    } finally {
-      setSending(false);
-    }
-  };
 
   if (listLoading && conversations.length === 0) {
     return (
@@ -90,7 +179,7 @@ export default function MessagesPage() {
   return (
     <div className="page active messages-page">
       <PageHeader title="Messages" desc="Communicate with sellers, buyers, and CDL Exchange support." />
-      {listRefreshing ? <div className="t-caption t-secondary" style={{ marginBottom: 8 }}>Updating...</div> : null}
+      {listRefreshing ? <div className="t-caption t-secondary messages-page-status">Updating...</div> : null}
       <div className="messages-layout">
         <div className="messages-sidebar">
           <div className="conv-list" id="convList">
@@ -117,8 +206,9 @@ export default function MessagesPage() {
         <div className="messages-chat-column">
           {activeConv ? (
             <MessengerPanel
-              className="messenger-panel--embedded"
+              className="messenger-panel--embedded messenger-panel--docked"
               title={chatTitle}
+              live
               messages={bubbles}
               loading={messagesLoading}
               emptyMessage="No messages yet. Start the conversation."
@@ -126,6 +216,8 @@ export default function MessagesPage() {
               onChange={setInput}
               onSend={() => void send()}
               sending={sending}
+              onFileSelect={(file) => void shareFile(file)}
+              focusKey={conversationId ?? undefined}
               messagesEndRef={messagesEndRef}
             />
           ) : (

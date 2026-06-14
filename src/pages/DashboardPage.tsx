@@ -303,56 +303,62 @@ export default function DashboardPage() {
       </div>
 
       <div className="dashboard-grid-3">
-        <div className="card dash-card">
+        <div className="card dash-card dash-card--trio">
           <div className="card-header">
             <h3>Recent Marketplace Activity</h3>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate("/marketplace")}>View All</button>
           </div>
-          <div className="card-body card-body--flush">
-            <div className="activity-feed">
-              {activities.map((a) => (
-                <ActivityFeedItem
-                  key={a.id}
-                  type={a.activity_type as "sale" | "list" | "deal" | "user"}
-                  title={a.title}
-                  desc={a.description}
-                  time={timeAgo(a.created_at)}
-                  status={a.status_label}
-                  statusCls={a.status_class}
-                />
-              ))}
+          <div className="card-body card-body--flush dash-card-trio-body">
+            <div className="dash-card-trio-scroll dash-card-trio-scroll--activity">
+              <div className="activity-feed">
+                {activities.slice(0, 6).map((a) => (
+                  <ActivityFeedItem
+                    key={a.id}
+                    type={a.activity_type as "sale" | "list" | "deal" | "user"}
+                    title={a.title}
+                    desc={a.description}
+                    time={timeAgo(a.created_at)}
+                    status={a.status_label}
+                    statusCls={a.status_class}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="card dash-card">
+        <div className="card dash-card dash-card--trio">
           <div className="card-header"><h3>Top Categories</h3></div>
-          <div className="card-body card-body--flush">
-            <div className="category-list">
-              <div className="category-head"><span>Category</span><span>Volume</span><span>Sell Rate</span></div>
-              {categories.map((c) => (
-                <CategoryRow key={c.id} name={c.name} listings={String(c.listings_count)} avg={fmtPrice(c.avg_price)} pct={c.sell_rate} cls={c.rate_class as "high" | "mid" | "low"} />
-              ))}
+          <div className="card-body card-body--flush dash-card-trio-body">
+            <div className="dash-card-trio-scroll">
+              <div className="category-list">
+                <div className="category-head"><span>Category</span><span>Volume</span><span>Sell Rate</span></div>
+                {categories.map((c) => (
+                  <CategoryRow key={c.id} name={c.name} listings={String(c.listings_count)} avg={fmtPrice(c.avg_price)} pct={c.sell_rate} cls={c.rate_class as "high" | "mid" | "low"} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="card dash-card">
+        <div className="card dash-card dash-card--trio">
           <div className="card-header"><h3>My Upcoming Actions</h3></div>
-          <div className="card-body card-body--flush">
-            <div className="dash-list">
-              {upcomingActions.map((a) => (
-                <ActionListItem
-                  key={a.id}
-                  initials={a.initials}
-                  color={a.color}
-                  name={a.title}
-                  detail={a.detail}
-                  time={a.timeLabel}
-                  urgency={a.urgency}
-                  onOpen={() => navigate(a.href)}
-                />
-              ))}
+          <div className="card-body card-body--flush dash-card-trio-body">
+            <div className="dash-card-trio-scroll">
+              <div className="dash-list">
+                {upcomingActions.map((a) => (
+                  <ActionListItem
+                    key={a.id}
+                    initials={a.initials}
+                    color={a.color}
+                    name={a.title}
+                    detail={a.detail}
+                    time={a.timeLabel}
+                    urgency={a.urgency}
+                    onOpen={() => navigate(a.href)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>

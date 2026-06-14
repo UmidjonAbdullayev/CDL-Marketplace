@@ -25,10 +25,12 @@ import {
   fetchDealMessages,
   fetchDealWorkspace,
   isOwnDealMessage,
+  sendDealFileMessage,
   sendDealMessage,
   signSellerContract,
   subscribeDealMessages,
   uploadDealDocument,
+  recordDealDocument,
   type DealMessageRow,
   type DealWorkspace
 } from "../services/hiring";
@@ -59,6 +61,7 @@ export default function DealWorkspacePage() {
   const [sellerAgreed, setSellerAgreed] = useState(false);
   const [signing, setSigning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
   const conversationId = workspace?.conversationId ?? null;
 
   const load = useCallback(async () => {
@@ -89,11 +92,8 @@ export default function DealWorkspacePage() {
 
   const myCompanyId = sessionUser?.companyId ?? "";
   const isSellerParty = deal?.seller_company_id === myCompanyId;
+  const isBuyerParty = deal?.buyer_company_id === myCompanyId;
   const needsSellerSign = Boolean(deal && !deal.seller_signed_at && deal.buyer_signed_at);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, tab]);
 
   const pullMessages = useCallback(async () => {
     if (!conversationId) return;
@@ -137,6 +137,8 @@ export default function DealWorkspacePage() {
       body: text,
       created_at: new Date().toISOString(),
       attachment_name: null,
+      attachment_path: null,
+      attachment_url: null,
       sender_company_id: myCompanyId
     };
     setMessages((prev) => [...prev, optimistic]);
@@ -164,15 +166,20 @@ export default function DealWorkspacePage() {
       body,
       created_at: new Date().toISOString(),
       attachment_name: label,
+      attachment_path: null,
+      attachment_url: null,
       sender_company_id: myCompanyId
     };
     setMessages((prev) => [...prev, optimistic]);
     setChatSending(true);
     try {
-      const saved = await sendDealMessage(conversationId, body, myCompanyId, deal.buyer_company_id, label);
-      await uploadDealDocument(deal.id, label, myCompanyId);
+      const saved = await sendDealFileMessage(conversationId, file, myCompanyId, deal.buyer_company_id);
+      if (saved?.attachment_path && saved.attachment_name) {
+        await recordDealDocument(deal.id, saved.attachment_name, saved.attachment_path, myCompanyId);
+      }
       if (saved) mergeMessage(saved, tempId);
       else void pullMessages();
+      await load();
       showToast(`Shared: ${label}`, "success");
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -182,10 +189,10 @@ export default function DealWorkspacePage() {
     }
   };
 
-  const attachDoc = async (name: string) => {
+  const attachDoc = async (file: File) => {
     if (!deal || !myCompanyId) return;
-    await uploadDealDocument(deal.id, name, myCompanyId);
-    showToast(`Shared: ${name}`, "success");
+    await uploadDealDocument(deal.id, file, myCompanyId);
+    showToast(`Shared: ${file.name}`, "success");
     await load();
     setTab("documents");
   };
@@ -206,10 +213,14 @@ export default function DealWorkspacePage() {
   };
 
   const advanceStage = async (stage: HiringStage) => {
-    if (!deal) return;
-    await advanceHiringStage(deal.id, stage);
-    showToast(`Stage updated: ${stage}`, "success");
-    await load();
+    if (!deal || !isBuyerParty) return;
+    try {
+      await advanceHiringStage(deal.id, stage, deal.buyer_company_id);
+      showToast(`Stage updated: ${stage}`, "success");
+      await load();
+    } catch {
+      showToast("Only the buyer can update hiring stages", "error");
+    }
   };
 
   const tabs = useMemo(
@@ -361,14 +372,16 @@ export default function DealWorkspacePage() {
         <div className="card">
           <div className="card-header" style={{ justifyContent: "space-between" }}>
             <h3>Hiring Timeline</h3>
-            {chatOpen ? (
-              <div style={{ display: "flex", gap: 8 }}>
+            {chatOpen && isBuyerParty ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {(["screening", "interview", "orientation", "hired", "completed"] as HiringStage[]).map((s) => (
                   <button key={s} type="button" className="btn btn-ghost btn-sm" onClick={() => void advanceStage(s)}>
                     → {s}
                   </button>
                 ))}
               </div>
+            ) : chatOpen ? (
+              <span className="t-caption t-secondary">Buyer updates hiring stages</span>
             ) : null}
           </div>
           <div className="card-body">
@@ -402,6 +415,7 @@ export default function DealWorkspacePage() {
 
       {tab === "chat" && chatOpen ? (
         <MessengerPanel
+          className="messenger-panel--docked"
           title={`Recruiting channel — ${deal.companies_buyer?.name} & ${deal.companies_seller?.name}`}
           live
           messages={messages.map((m) => ({
@@ -410,6 +424,8 @@ export default function DealWorkspacePage() {
             isMine: isOwnDealMessage(m, myCompanyId, deal.buyer_company_id),
             isSystem: !m.sender_company_id && m.body.startsWith("Contract fully"),
             attachmentName: m.attachment_name,
+            attachmentPath: m.attachment_path,
+            attachmentUrl: m.attachment_url,
             timeLabel: formatMsgTime(m.created_at)
           }))}
           emptyMessage="No messages yet. Say hello to start the conversation."
@@ -418,6 +434,7 @@ export default function DealWorkspacePage() {
           onSend={() => void sendChat()}
           sending={chatSending}
           onFileSelect={(file) => void shareFile(file)}
+          focusKey={conversationId ?? undefined}
           messagesEndRef={messagesEndRef}
         />
       ) : null}
@@ -427,9 +444,26 @@ export default function DealWorkspacePage() {
           <div className="card-header" style={{ justifyContent: "space-between" }}>
             <h3>Contracts & Documents</h3>
             {chatOpen ? (
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void attachDoc(`Document_${Date.now()}.pdf`)}>
-                Upload Document
-              </button>
+              <>
+                <input
+                  ref={docFileInputRef}
+                  type="file"
+                  className="messenger-file-input"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void attachDoc(file);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => docFileInputRef.current?.click()}
+                >
+                  Upload Document
+                </button>
+              </>
             ) : null}
           </div>
           <div className="card-body">
@@ -458,7 +492,13 @@ export default function DealWorkspacePage() {
                   {workspace.documents.map((d) => (
                     <li key={d.id}>
                       <FileText className="icon-sm" />
-                      <span>{d.file_name}</span>
+                      {d.download_url ? (
+                        <a href={d.download_url} target="_blank" rel="noopener noreferrer" download={d.file_name}>
+                          {d.file_name}
+                        </a>
+                      ) : (
+                        <span>{d.file_name}</span>
+                      )}
                       <span className="t-caption t-secondary">{fmtDate(d.created_at)}</span>
                     </li>
                   ))}

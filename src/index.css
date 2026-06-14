@@ -76,16 +76,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 /* Unified scrollbars */
-.scroll-y, .content, .sidebar-nav, .conv-list, .chat-messages, .messenger-panel-messages, .modal-body, .table-wrap {
+.scroll-y, .content, .sidebar-nav, .conv-list, .chat-messages, .messenger-panel-messages, .dash-card-trio-scroll, .modal-body, .table-wrap {
   scrollbar-width: thin;
   scrollbar-color: var(--gray-300) transparent;
 }
 .scroll-y::-webkit-scrollbar, .content::-webkit-scrollbar, .sidebar-nav::-webkit-scrollbar,
-.conv-list::-webkit-scrollbar, .chat-messages::-webkit-scrollbar, .messenger-panel-messages::-webkit-scrollbar, .modal-body::-webkit-scrollbar {
+.conv-list::-webkit-scrollbar, .chat-messages::-webkit-scrollbar, .messenger-panel-messages::-webkit-scrollbar, .dash-card-trio-scroll::-webkit-scrollbar, .modal-body::-webkit-scrollbar {
   width: 6px; height: 6px;
 }
 .scroll-y::-webkit-scrollbar-thumb, .content::-webkit-scrollbar-thumb, .sidebar-nav::-webkit-scrollbar-thumb,
-.conv-list::-webkit-scrollbar-thumb, .chat-messages::-webkit-scrollbar-thumb, .messenger-panel-messages::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
+.conv-list::-webkit-scrollbar-thumb, .chat-messages::-webkit-scrollbar-thumb, .messenger-panel-messages::-webkit-scrollbar-thumb, .dash-card-trio-scroll::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
   background: var(--gray-300); border-radius: 3px;
 }
 .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); }
@@ -184,10 +184,10 @@ body.sidebar-open .content { overflow: hidden; touch-action: none; }
 }
 .menu-toggle { flex-shrink: 0; }
 .topbar-search {
-  flex: 0 1 48%;
-  max-width: 48%;
-  min-width: 220px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  width: auto;
 }
 .topbar-search .search-wrap {
   width: 100%;
@@ -312,6 +312,7 @@ body.sidebar-open .content { overflow: hidden; touch-action: none; }
 .content:has(.messages-page.active),
 .content:has(.deal-workspace-page--chat-active) {
   overflow: hidden;
+  padding-bottom: 0;
 }
 .page { display: none; }
 .page.active { display: block; animation: fadeIn var(--transition-page) ease; }
@@ -520,7 +521,41 @@ body.sidebar-open .content { overflow: hidden; touch-action: none; }
 .quick-action-icon.green { background: #D1FAE5; color: #10B981; }
 .quick-action-icon.orange { background: #FFEDD5; color: #F97316; }
 .dashboard-row-2 { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: var(--dash-gap); margin-bottom: var(--dash-gap); align-items: stretch; }
-.dashboard-grid-3 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--dash-gap); margin-bottom: var(--dash-gap); align-items: stretch; }
+.dashboard-grid-3 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--dash-gap); margin-bottom: var(--dash-gap); align-items: start; }
+.dashboard-grid-3 {
+  --dash-activity-row-h: 54px;
+  --dash-trio-panel-h: calc(var(--dash-activity-row-h) * 6 + 12px);
+}
+.dashboard-grid-3 > .dash-card--trio {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.dashboard-grid-3 .dash-card-trio-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-grid-3 .dash-card-trio-scroll {
+  max-height: var(--dash-trio-panel-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-300) transparent;
+}
+.dashboard-grid-3 .dash-card-trio-scroll::-webkit-scrollbar { width: 5px; }
+.dashboard-grid-3 .dash-card-trio-scroll::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 3px; }
+.dashboard-grid-3 .dash-card-trio-scroll--activity {
+  overflow-y: hidden;
+}
+.dashboard-grid-3 .category-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
 .dashboard-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--dash-gap); margin-bottom: var(--dash-gap); }
 .find-drivers-enriched { display: flex; flex-direction: column; gap: 10px; }
 .find-drivers-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
@@ -1196,6 +1231,21 @@ tbody tr:hover td { background: var(--bg); }
 .msg.in { background: var(--gray-100); color: var(--text-primary); }
 .msg.out { background: var(--blue); color: #fff; }
 .msg-attachment { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: 4px; opacity: 0.85; }
+.msg-attachment-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.msg-bubble-out .msg-attachment-link { color: #fff; }
+.msg-bubble-in .msg-attachment-link { color: var(--primary); }
+.deal-doc-list a { color: var(--primary); font-weight: 500; text-decoration: none; }
+.deal-doc-list a:hover { text-decoration: underline; }
 .deal-doc-list { list-style: none; padding: 0; margin: 0; }
 .deal-doc-list li {
   display: flex; align-items: center; gap: 10px; padding: 10px 0;
@@ -1256,15 +1306,33 @@ tbody tr:hover td { background: var(--bg); }
 
 /* Messages */
 .messages-page > .page-header,
-.messages-page > .t-caption {
+.messages-page > .messages-page-status {
   flex-shrink: 0;
+}
+.messages-page > .page-header {
+  margin-bottom: var(--s4);
+}
+.messages-page > .page-header p {
+  margin-bottom: 0;
 }
 .messages-layout {
   display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); gap: 0;
-  border: 1px solid var(--gray-200); border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--gray-200); border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom: none;
+  overflow: hidden;
   flex: 1;
   min-height: 0;
   background: #fff;
+}
+.messenger-panel--docked {
+  border-radius: var(--radius);
+  border-bottom: none;
+}
+.messenger-panel--docked .messenger-panel-footer {
+  border-radius: 0;
+}
+.messages-page .messenger-panel--embedded.messenger-panel--docked {
+  border-radius: 0;
 }
 .messages-sidebar {
   display: flex;

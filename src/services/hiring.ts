@@ -1,6 +1,7 @@
 import { getActiveCompanyId } from "../lib/activeCompany";
 import type { HiringStage } from "../lib/hiring";
 import { supabase } from "../lib/supabase";
+import { enrichMessagesWithAttachmentUrls, getAttachmentViewUrl, uploadChatAttachment } from "./chatAttachments";
 import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation } from "./marketplace";
 import type { Driver, DriverCard } from "../types";
 
@@ -51,7 +52,9 @@ export type DealDocumentRow = {
   deal_id: string;
   file_name: string;
   uploaded_by_company_id: string | null;
+  storage_path: string | null;
   created_at: string;
+  download_url?: string | null;
 };
 
 export type DealWorkspace = {
@@ -283,6 +286,10 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
     ? rowToCard({ ...listing, companies: unwrapRelation(listing.companies) } as Parameters<typeof rowToCard>[0])
     : null;
   const driver = listing ? rowToDriver(listing as Parameters<typeof rowToDriver>[0]) : null;
+  const documentsWithUrls: DealDocumentRow[] = (documents ?? []).map((doc) => ({
+    ...(doc as DealDocumentRow),
+    download_url: doc.storage_path ? getAttachmentViewUrl(doc.storage_path) : null
+  }));
 
   return {
     deal: {
@@ -306,13 +313,21 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
     driver,
     driverCard: listingCard,
     events: events ?? [],
-    documents: documents ?? [],
+    documents: documentsWithUrls,
     conversationId
   };
 }
 
-export async function advanceHiringStage(dealIdValue: string, stage: HiringStage): Promise<void> {
+export async function advanceHiringStage(
+  dealIdValue: string,
+  stage: HiringStage,
+  buyerCompanyId: string
+): Promise<void> {
   if (!supabase) return;
+  const companyId = getActiveCompanyId();
+  if (companyId !== buyerCompanyId) {
+    throw new Error("Only the buyer can update hiring stages");
+  }
   const label = stage.charAt(0).toUpperCase() + stage.slice(1);
   const statusMap: Record<string, string> = {
     screening: "Hiring Active",
@@ -331,26 +346,47 @@ export async function advanceHiringStage(dealIdValue: string, stage: HiringStage
   await insertDealEvent(dealIdValue, stage, `Stage updated: ${label}`, "");
 }
 
-export async function uploadDealDocument(dealIdValue: string, fileName: string, companyId: string): Promise<void> {
-  if (!supabase) return;
-  const { error } = await supabase.from("deal_documents").insert({
-    deal_id: dealIdValue,
-    file_name: fileName,
-    uploaded_by_company_id: companyId
-  });
+export async function recordDealDocument(
+  dealIdValue: string,
+  fileName: string,
+  storagePath: string,
+  companyId: string
+): Promise<DealDocumentRow | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("deal_documents")
+    .insert({
+      deal_id: dealIdValue,
+      file_name: fileName,
+      storage_path: storagePath,
+      uploaded_by_company_id: companyId
+    })
+    .select("id, deal_id, file_name, storage_path, uploaded_by_company_id, created_at")
+    .single();
   if (error) throw error;
   await insertDealEvent(dealIdValue, "document", "Document shared", fileName);
+  const download_url = getAttachmentViewUrl(storagePath);
+  return { ...(data as DealDocumentRow), download_url };
+}
+
+export async function uploadDealDocument(
+  dealIdValue: string,
+  file: File,
+  companyId: string
+): Promise<DealDocumentRow | null> {
+  const uploaded = await uploadChatAttachment(file, `deals/${dealIdValue}`);
+  return recordDealDocument(dealIdValue, uploaded.name, uploaded.path, companyId);
 }
 
 export async function fetchDealMessages(conversationId: string) {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("messages")
-    .select("id, direction, body, created_at, attachment_name, sender_company_id")
+    .select("id, direction, body, created_at, attachment_name, attachment_path, sender_company_id")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
   if (error) throw error;
-  return data ?? [];
+  return enrichMessagesWithAttachmentUrls(data ?? []);
 }
 
 export type DealMessageRow = Awaited<ReturnType<typeof fetchDealMessages>>[number];
@@ -392,7 +428,7 @@ export async function sendDealMessage(
   body: string,
   companyId: string,
   buyerCompanyId: string,
-  attachmentName?: string
+  attachment?: { name: string; path: string }
 ): Promise<DealMessageRow | null> {
   if (!supabase) return null;
   const direction = companyId === buyerCompanyId ? "out" : "in";
@@ -403,13 +439,31 @@ export async function sendDealMessage(
       sender_company_id: companyId,
       direction,
       body,
-      attachment_name: attachmentName ?? null
+      attachment_name: attachment?.name ?? null,
+      attachment_path: attachment?.path ?? null
     })
-    .select("id, direction, body, created_at, attachment_name, sender_company_id")
+    .select("id, direction, body, created_at, attachment_name, attachment_path, sender_company_id")
     .single();
   if (error) throw error;
   await supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conversationId);
-  return data as DealMessageRow;
+  const [enriched] = await enrichMessagesWithAttachmentUrls([data as DealMessageRow]);
+  return enriched ?? null;
+}
+
+export async function sendDealFileMessage(
+  conversationId: string,
+  file: File,
+  companyId: string,
+  buyerCompanyId: string
+): Promise<DealMessageRow | null> {
+  const uploaded = await uploadChatAttachment(file, `conversations/${conversationId}`);
+  return sendDealMessage(
+    conversationId,
+    `Shared file: ${uploaded.name}`,
+    companyId,
+    buyerCompanyId,
+    { name: uploaded.name, path: uploaded.path }
+  );
 }
 
 export async function fetchListingForContract(listingId: number): Promise<{ card: DriverCard; sellerId: string } | null> {

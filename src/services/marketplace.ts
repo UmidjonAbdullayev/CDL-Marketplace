@@ -2,6 +2,7 @@ import { getActiveCompanyId } from "../lib/activeCompany";
 import type { DriverType } from "../lib/driver-types";
 import { supabase } from "../lib/supabase";
 import type { Driver, DriverCard, HotListing, Paginated, ScoreFlag } from "../types";
+import { enrichMessagesWithAttachmentUrls, uploadChatAttachment } from "./chatAttachments";
 
 const NEW_LISTING_MS = 7 * 86400000;
 
@@ -556,7 +557,12 @@ export type MessageRow = {
   created_at: string;
   sender_company_id?: string | null;
   attachment_name?: string | null;
+  attachment_path?: string | null;
+  attachment_url?: string | null;
 };
+
+const MESSAGE_SELECT =
+  "id, direction, body, created_at, sender_company_id, attachment_name, attachment_path";
 
 export async function fetchConversationsPage(
   { page = 1, pageSize = DEFAULT_PAGE_SIZE }: PageParams = {}
@@ -591,11 +597,31 @@ export async function fetchConversationMessages(conversationId: string): Promise
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("messages")
-    .select("id, direction, body, created_at, sender_company_id, attachment_name")
+    .select(MESSAGE_SELECT)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
   if (error) throw error;
-  return data ?? [];
+  return enrichMessagesWithAttachmentUrls(data ?? []);
+}
+
+export function subscribeConversationMessages(conversationId: string, onChange: () => void): () => void {
+  if (!supabase) return () => {};
+  const channel = supabase
+    .channel(`conversation-messages-${conversationId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`
+      },
+      () => onChange()
+    )
+    .subscribe();
+  return () => {
+    if (supabase) void supabase.removeChannel(channel);
+  };
 }
 
 export function isOwnInboxMessage(
@@ -609,7 +635,11 @@ export function isOwnInboxMessage(
   return amBuyer ? msg.direction === "out" : msg.direction === "in";
 }
 
-export async function sendMessage(conversationId: string, body: string): Promise<MessageRow | null> {
+export async function sendMessage(
+  conversationId: string,
+  body: string,
+  attachment?: { name: string; path: string }
+): Promise<MessageRow | null> {
   if (!supabase) return null;
   const companyId = getActiveCompanyId();
   const { data: conv } = await supabase
@@ -624,13 +654,27 @@ export async function sendMessage(conversationId: string, body: string): Promise
       conversation_id: conversationId,
       sender_company_id: companyId,
       direction,
-      body
+      body,
+      attachment_name: attachment?.name ?? null,
+      attachment_path: attachment?.path ?? null
     })
-    .select("id, direction, body, created_at, sender_company_id, attachment_name")
+    .select(MESSAGE_SELECT)
     .single();
   if (error) throw error;
   await supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conversationId);
-  return data as MessageRow;
+  const [enriched] = await enrichMessagesWithAttachmentUrls([data as MessageRow]);
+  return enriched ?? null;
+}
+
+export async function sendConversationFile(
+  conversationId: string,
+  file: File
+): Promise<MessageRow | null> {
+  const uploaded = await uploadChatAttachment(file, `conversations/${conversationId}`);
+  return sendMessage(conversationId, `Shared file: ${uploaded.name}`, {
+    name: uploaded.name,
+    path: uploaded.path
+  });
 }
 
 export type SellerListingRow = {
@@ -804,7 +848,7 @@ export async function rejectListing(listingId: number): Promise<void> {
 
 export async function fetchActivities(period?: DashboardPeriod) {
   if (!supabase) return [];
-  let q = supabase.from("activities").select("*").order("created_at", { ascending: false }).limit(12);
+  let q = supabase.from("activities").select("*").order("created_at", { ascending: false }).limit(6);
   if (period) q = q.gte("created_at", periodSince(period));
   const { data, error } = await q;
   if (error) throw error;
