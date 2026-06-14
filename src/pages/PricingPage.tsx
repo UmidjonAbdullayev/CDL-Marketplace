@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext";
+import { CARRIER_PLANS } from "../lib/carrier-plans";
 import { fmtPrice } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchBillingHistory, type BillingRow } from "../services/compliance";
@@ -15,8 +16,7 @@ const FEATURED_TERMS = [
   "CDL Exchange may remove featured status for policy violations without refund."
 ];
 
-export default function PricingPage() {
-  const { showToast } = useApp();
+function FeaturedListingPricing({ showToast }: { showToast: (msg: string, type?: "" | "success" | "error") => void }) {
   const [billing, setBilling] = useState<BillingRow[]>([]);
   const [billingLoading, setBillingLoading] = useState(isSupabaseConfigured);
 
@@ -32,12 +32,7 @@ export default function PricingPage() {
   }, []);
 
   return (
-    <div className="page active">
-      <div className="page-header centered">
-        <h2>Pricing & Billing</h2>
-        <p>Platform listing upgrades — no marketplace subscription fees.</p>
-      </div>
-
+    <>
       <div className="pricing-grid" style={{ maxWidth: 480, margin: "0 auto" }}>
         <div className="pricing-card featured">
           <h3>Featured Listing</h3>
@@ -72,27 +67,146 @@ export default function PricingPage() {
       </div>
 
       {!billingLoading && billing.length > 0 ? (
-        <div className="card" style={{ marginTop: 20 }}>
-          <div className="card-header"><h3>Billing History</h3></div>
-          <div className="card-body">
-            <table>
-              <thead>
-                <tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {billing.map((row) => (
-                  <tr key={row.id}>
-                    <td>{new Date(row.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
-                    <td>{row.description}</td>
-                    <td>{fmtPrice(row.amount)}</td>
-                    <td><span className="badge badge-green">{row.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <BillingHistoryTable rows={billing} />
       ) : null}
+    </>
+  );
+}
+
+function BillingHistoryTable({ rows }: { rows: BillingRow[] }) {
+  return (
+    <div className="card" style={{ marginTop: 20 }}>
+      <div className="card-header"><h3>Billing History</h3></div>
+      <div className="card-body">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>{new Date(row.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                <td>{row.description}</td>
+                <td>{fmtPrice(row.amount)}</td>
+                <td><span className="badge badge-green">{row.status}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CarrierPlansPricing({
+  currentPlanId,
+  showToast
+}: {
+  currentPlanId: string;
+  showToast: (msg: string, type?: "" | "success" | "error") => void;
+}) {
+  const [billing, setBilling] = useState<BillingRow[]>([]);
+  const [billingLoading, setBillingLoading] = useState(isSupabaseConfigured);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setBillingLoading(false);
+      return;
+    }
+    void fetchBillingHistory()
+      .then(setBilling)
+      .catch(() => setBilling([]))
+      .finally(() => setBillingLoading(false));
+  }, []);
+
+  const currentPlan = CARRIER_PLANS.find((p) => p.id === currentPlanId) ?? CARRIER_PLANS[0];
+
+  return (
+    <>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header"><h3>Your Current Plan</h3></div>
+        <div className="card-body" style={{ fontSize: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <strong style={{ fontSize: 18 }}>{currentPlan.name}</strong>
+              <div className="t-secondary" style={{ marginTop: 4 }}>{currentPlan.priceLabel}</div>
+            </div>
+            <span className="badge badge-blue">Active</span>
+          </div>
+          <ul style={{ marginTop: 16, paddingLeft: 20, lineHeight: 1.8, fontSize: 13 }}>
+            {currentPlan.features.map((f) => (
+              <li key={f.text} style={{ color: f.locked ? "var(--gray-400)" : undefined }}>
+                {f.locked ? "🔒 " : "✓ "}{f.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="page-header centered" style={{ marginBottom: 24 }}>
+        <h3>Available Plans</h3>
+        <p className="t-secondary">Choose the plan that fits your hiring volume and CRM needs.</p>
+      </div>
+
+      <div className="pricing-grid">
+        {CARRIER_PLANS.map((plan) => {
+          const isCurrent = plan.id === currentPlanId;
+          return (
+            <div key={plan.id} className={`pricing-card ${plan.popular ? "featured" : ""} ${isCurrent ? "current-plan" : ""}`}>
+              {plan.popular ? <div className="badge badge-blue" style={{ marginBottom: 8 }}>Most Popular</div> : null}
+              {isCurrent ? <div className="badge badge-green" style={{ marginBottom: 8 }}>Current Plan</div> : null}
+              <h3>{plan.name}</h3>
+              <div className="price">{plan.price === 0 ? "$0" : fmtPrice(plan.price)}</div>
+              <div className="period">{plan.price === 0 ? "Browse preview" : "/month"}</div>
+              <ul>
+                {plan.features.map((f) => (
+                  <li key={f.text} style={{ color: f.locked ? "var(--gray-400)" : undefined }}>
+                    {f.locked ? "— " : ""}{f.text}
+                  </li>
+                ))}
+              </ul>
+              <button
+                className={`btn ${isCurrent ? "btn-secondary" : "btn-primary"}`}
+                style={{ width: "100%" }}
+                type="button"
+                disabled={isCurrent}
+                onClick={() => showToast(isCurrent ? "Already on this plan" : `Upgrade to ${plan.name} (demo)`, "success")}
+              >
+                {isCurrent ? "Current Plan" : `Upgrade to ${plan.name}`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {!billingLoading && billing.length > 0 ? (
+        <BillingHistoryTable rows={billing} />
+      ) : null}
+    </>
+  );
+}
+
+export default function PricingPage() {
+  const { showToast, sessionUser } = useApp();
+  const isCarrier = sessionUser?.accountType === "carrier";
+  const currentPlanId = sessionUser?.selectedPlan ?? "free";
+
+  return (
+    <div className="page active">
+      <div className="page-header centered">
+        <h2>Pricing & Billing</h2>
+        <p>
+          {isCarrier
+            ? "Manage your carrier subscription and view billing history."
+            : "Listing upgrades and billing for your recruiter account."}
+        </p>
+      </div>
+
+      {isCarrier ? (
+        <CarrierPlansPricing currentPlanId={currentPlanId} showToast={showToast} />
+      ) : (
+        <FeaturedListingPricing showToast={showToast} />
+      )}
     </div>
   );
 }

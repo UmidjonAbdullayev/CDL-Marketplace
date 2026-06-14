@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
   Clock,
   FileText,
   MessageSquare,
-  Paperclip,
-  Send,
   User
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
+import { MessengerPanel } from "../components/chat/MessengerPanel";
 import { useApp } from "../context/AppContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import {
@@ -25,9 +24,12 @@ import {
   advanceHiringStage,
   fetchDealMessages,
   fetchDealWorkspace,
+  isOwnDealMessage,
   sendDealMessage,
   signSellerContract,
+  subscribeDealMessages,
   uploadDealDocument,
+  type DealMessageRow,
   type DealWorkspace
 } from "../services/hiring";
 import type { HiringStage } from "../lib/hiring";
@@ -50,11 +52,14 @@ export default function DealWorkspacePage() {
   const [workspace, setWorkspace] = useState<DealWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
-  const [messages, setMessages] = useState<Awaited<ReturnType<typeof fetchDealMessages>>>([]);
+  const [messages, setMessages] = useState<DealMessageRow[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
   const [sellerName, setSellerName] = useState(sessionUser?.name ?? "");
   const [sellerAgreed, setSellerAgreed] = useState(false);
   const [signing, setSigning] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationId = workspace?.conversationId ?? null;
 
   const load = useCallback(async () => {
     if (!dealId) return;
@@ -86,12 +91,95 @@ export default function DealWorkspacePage() {
   const isSellerParty = deal?.seller_company_id === myCompanyId;
   const needsSellerSign = Boolean(deal && !deal.seller_signed_at && deal.buyer_signed_at);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, tab]);
+
+  const pullMessages = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const fresh = await fetchDealMessages(conversationId);
+      setMessages(fresh);
+    } catch {
+      /* background refresh */
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (tab !== "chat" || !chatOpen || !conversationId) return;
+
+    void pullMessages();
+    const interval = window.setInterval(() => void pullMessages(), 3000);
+    const unsub = subscribeDealMessages(conversationId, () => void pullMessages());
+
+    return () => {
+      window.clearInterval(interval);
+      unsub();
+    };
+  }, [tab, chatOpen, conversationId, pullMessages]);
+
+  const mergeMessage = (saved: DealMessageRow, tempId: string) => {
+    setMessages((prev) => {
+      const withoutTemp = prev.filter((m) => m.id !== tempId);
+      if (withoutTemp.some((m) => m.id === saved.id)) return withoutTemp;
+      return [...withoutTemp, saved];
+    });
+  };
+
   const sendChat = async () => {
-    if (!chatInput.trim() || !workspace?.conversationId || !deal || !myCompanyId) return;
+    if (!chatInput.trim() || !conversationId || !deal || !myCompanyId || chatSending) return;
     const text = chatInput.trim();
     setChatInput("");
-    await sendDealMessage(workspace.conversationId, text, myCompanyId, deal.buyer_company_id);
-    setMessages(await fetchDealMessages(workspace.conversationId));
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: DealMessageRow = {
+      id: tempId,
+      direction: myCompanyId === deal.buyer_company_id ? "out" : "in",
+      body: text,
+      created_at: new Date().toISOString(),
+      attachment_name: null,
+      sender_company_id: myCompanyId
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setChatSending(true);
+    try {
+      const saved = await sendDealMessage(conversationId, text, myCompanyId, deal.buyer_company_id);
+      if (saved) mergeMessage(saved, tempId);
+      else void pullMessages();
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      showToast("Failed to send message", "error");
+    } finally {
+      setChatSending(false);
+    }
+  };
+
+  const shareFile = async (file: File) => {
+    if (!conversationId || !deal || !myCompanyId || chatSending) return;
+    const label = file.name;
+    const body = `Shared file: ${label}`;
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: DealMessageRow = {
+      id: tempId,
+      direction: myCompanyId === deal.buyer_company_id ? "out" : "in",
+      body,
+      created_at: new Date().toISOString(),
+      attachment_name: label,
+      sender_company_id: myCompanyId
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setChatSending(true);
+    try {
+      const saved = await sendDealMessage(conversationId, body, myCompanyId, deal.buyer_company_id, label);
+      await uploadDealDocument(deal.id, label, myCompanyId);
+      if (saved) mergeMessage(saved, tempId);
+      else void pullMessages();
+      showToast(`Shared: ${label}`, "success");
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      showToast("Failed to share file", "error");
+    } finally {
+      setChatSending(false);
+    }
   };
 
   const attachDoc = async (name: string) => {
@@ -150,7 +238,7 @@ export default function DealWorkspacePage() {
   }
 
   return (
-    <div className="page active deal-workspace-page">
+    <div className={`page active deal-workspace-page ${tab === "chat" && chatOpen ? "deal-workspace-page--chat-active" : ""}`}>
       <div className="page-header inline">
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate("/ongoing-deals")}>
           <ArrowLeft className="icon-sm" /> Ongoing Deals
@@ -216,6 +304,7 @@ export default function DealWorkspacePage() {
         })}
       </div>
 
+      <div className={`deal-workspace-body ${tab === "chat" && chatOpen ? "deal-workspace-body--chat" : ""}`}>
       {tab === "overview" ? (
         <div className="detail-layout revealed">
           <div className="detail-main card">
@@ -312,33 +401,25 @@ export default function DealWorkspacePage() {
       ) : null}
 
       {tab === "chat" && chatOpen ? (
-        <div className="card deal-chat-card">
-          <div className="chat-area" style={{ border: "none", minHeight: 360 }}>
-            <div className="chat-header">Recruiting channel — {deal.companies_buyer?.name} &amp; {deal.companies_seller?.name}</div>
-            <div className="chat-messages">
-              {messages.map((m) => (
-                <div key={m.id} className={`msg ${m.direction}`}>
-                  {m.body}
-                  {m.attachment_name ? <div className="msg-attachment"><Paperclip className="icon-sm" /> {m.attachment_name}</div> : null}
-                  <div className="time">{formatMsgTime(m.created_at)}</div>
-                </div>
-              ))}
-            </div>
-            <div className="chat-input">
-              <input
-                type="text"
-                placeholder="Message the other party..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void sendChat()}
-              />
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void attachDoc("Offer_Letter.pdf")}>
-                <Paperclip className="icon-sm" />
-              </button>
-              <button type="button" className="btn btn-primary" onClick={() => void sendChat()}><Send className="icon-sm" /></button>
-            </div>
-          </div>
-        </div>
+        <MessengerPanel
+          title={`Recruiting channel — ${deal.companies_buyer?.name} & ${deal.companies_seller?.name}`}
+          live
+          messages={messages.map((m) => ({
+            id: m.id,
+            body: m.body,
+            isMine: isOwnDealMessage(m, myCompanyId, deal.buyer_company_id),
+            isSystem: !m.sender_company_id && m.body.startsWith("Contract fully"),
+            attachmentName: m.attachment_name,
+            timeLabel: formatMsgTime(m.created_at)
+          }))}
+          emptyMessage="No messages yet. Say hello to start the conversation."
+          value={chatInput}
+          onChange={setChatInput}
+          onSend={() => void sendChat()}
+          sending={chatSending}
+          onFileSelect={(file) => void shareFile(file)}
+          messagesEndRef={messagesEndRef}
+        />
       ) : null}
 
       {tab === "documents" && deal?.buyer_signed_at ? (
@@ -400,6 +481,7 @@ export default function DealWorkspacePage() {
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }

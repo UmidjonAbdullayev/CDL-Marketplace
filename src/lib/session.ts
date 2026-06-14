@@ -1,9 +1,10 @@
-import type { AccountType, RegistrationAccount, RegistrationStatus } from "../types/registration";
+import type { AccountType, CarrierPlanId, RegistrationAccount, RegistrationStatus } from "../types/registration";
 
 export type SessionUser = {
   id: string;
   name: string;
   plan: string;
+  selectedPlan: CarrierPlanId | null;
   initials: string;
   email: string;
   accountType: AccountType;
@@ -62,6 +63,7 @@ export function sessionFromAccount(
     email: account.email,
     accountType: account.account_type,
     status: account.status,
+    selectedPlan: account.account_type === "carrier" ? account.selected_plan ?? "free" : null,
     companyId: account.company_id ?? "",
     isAdmin: Boolean(account.is_admin),
     walletBalance: Number(company?.wallet_balance ?? 0)
@@ -93,6 +95,9 @@ export function initSession(): SessionUser | null {
   if (!user.email || !user.companyId) {
     clearSession();
     return null;
+  }
+  if (user.accountType === "carrier" && user.selectedPlan === undefined) {
+    return { ...user, selectedPlan: "free" };
   }
   return user;
 }

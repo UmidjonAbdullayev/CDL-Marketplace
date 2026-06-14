@@ -1,6 +1,7 @@
-import { ArrowLeft, ArrowRight, FileText, ShieldCheck, UserCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Info, Lock, ShieldCheck, UserCheck } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
@@ -8,10 +9,12 @@ import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 export default function DriverDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { sessionUser } = useApp();
   const { driverDetails, driverDetailLoading, loadDriverDetail } = useExchangeData();
 
   const listingId = Number(id);
   const driver = useMemo(() => (listingId ? driverDetails[listingId] ?? null : null), [driverDetails, listingId]);
+  const canStartHiring = sessionUser?.accountType === "carrier";
 
   useEffect(() => {
     if (listingId) void loadDriverDetail(listingId);
@@ -73,13 +76,32 @@ export default function DriverDetailPage() {
               <div className="detail-price">{fmtRecruitingFee(driver.price)}</div>
               <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>Fee for recruiting coordination through CDL Exchange</p>
               <div className="detail-seller"><StarRating rating={driver.sellerRating} /> {driver.seller}</div>
-              <button
-                className="btn btn-primary btn-block"
-                style={{ marginTop: 16 }}
-                onClick={() => navigate(`/hiring/contract/${driver.id}`)}
-              >
-                Start Hiring Process
-              </button>
+              {canStartHiring ? (
+                <button
+                  className="btn btn-primary btn-block"
+                  style={{ marginTop: 16 }}
+                  onClick={() => navigate(`/hiring/contract/${driver.id}`)}
+                >
+                  Start Hiring Process
+                </button>
+              ) : (
+                <div className="action-locked-wrap" style={{ marginTop: 16 }}>
+                  <button type="button" className="btn btn-primary btn-block action-locked-btn" disabled aria-disabled="true">
+                    <Lock className="icon-sm" />
+                    Start Hiring Process
+                  </button>
+                  <div className="action-locked-callout">
+                    <Info className="icon-sm action-locked-icon" aria-hidden="true" />
+                    <div>
+                      <strong>Not available for recruiter accounts</strong>
+                      <p>
+                        Only carrier / company accounts can start hiring and purchase leads. As a recruiter you can
+                        list drivers, manage ongoing deals, and chat with carriers in deal workspaces.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="escrow-note t-caption t-secondary">Review and sign the recruiting agreement before messaging or document exchange.</div>
             </div>
           </div>

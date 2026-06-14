@@ -543,6 +543,8 @@ export type ConversationSummary = {
   last_message_at: string;
   is_support: boolean;
   deal_id: string | null;
+  buyer_company_id?: string;
+  seller_company_id?: string | null;
   companies: { name: string } | null;
   preview?: string;
 };
@@ -552,6 +554,8 @@ export type MessageRow = {
   direction: string;
   body: string;
   created_at: string;
+  sender_company_id?: string | null;
+  attachment_name?: string | null;
 };
 
 export async function fetchConversationsPage(
@@ -566,7 +570,7 @@ export async function fetchConversationsPage(
   const { data, error, count } = await supabase
     .from("conversations")
     .select(
-      `id, subject, last_message_at, is_support, deal_id,
+      `id, subject, last_message_at, is_support, deal_id, buyer_company_id, seller_company_id,
       companies:companies!conversations_seller_company_id_fkey (name)`,
       { count: "exact" }
     )
@@ -587,23 +591,46 @@ export async function fetchConversationMessages(conversationId: string): Promise
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("messages")
-    .select("id, direction, body, created_at")
+    .select("id, direction, body, created_at, sender_company_id, attachment_name")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return data ?? [];
 }
 
-export async function sendMessage(conversationId: string, body: string): Promise<void> {
-  if (!supabase) return;
-  const { error } = await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    sender_company_id: getActiveCompanyId(),
-    direction: "out",
-    body
-  });
+export function isOwnInboxMessage(
+  msg: MessageRow,
+  myCompanyId: string,
+  buyerCompanyId: string
+): boolean {
+  if (!myCompanyId) return msg.direction === "out";
+  if (msg.sender_company_id) return msg.sender_company_id === myCompanyId;
+  const amBuyer = myCompanyId === buyerCompanyId;
+  return amBuyer ? msg.direction === "out" : msg.direction === "in";
+}
+
+export async function sendMessage(conversationId: string, body: string): Promise<MessageRow | null> {
+  if (!supabase) return null;
+  const companyId = getActiveCompanyId();
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("buyer_company_id")
+    .eq("id", conversationId)
+    .single();
+  const direction = conv?.buyer_company_id === companyId ? "out" : "in";
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      sender_company_id: companyId,
+      direction,
+      body
+    })
+    .select("id, direction, body, created_at, sender_company_id, attachment_name")
+    .single();
   if (error) throw error;
   await supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conversationId);
+  return data as MessageRow;
 }
 
 export type SellerListingRow = {
@@ -704,6 +731,7 @@ export type NewListingInput = {
   routePref: string;
   notes: string;
   price: number;
+  driverType: string;
   documents?: string[];
 };
 
@@ -725,6 +753,7 @@ export async function createListing(input: NewListingInput): Promise<number> {
     route_pref: input.routePref,
     notes: input.notes,
     price: input.price,
+    driver_type: input.driverType,
     documents: input.documents ?? ["CDL Copy"],
     seller_company_id: getActiveCompanyId(),
     status: "pending",

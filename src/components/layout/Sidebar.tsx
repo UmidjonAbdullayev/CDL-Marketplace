@@ -34,8 +34,8 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/marketplace", label: "Marketplace", icon: Store },
-      { to: "/sell", label: "Sell / List Driver", icon: PlusCircle, sellerOnly: true },
-      { to: "/my-listings", label: "My Listings", icon: FileText, sellerOnly: true },
+      { to: "/sell", label: "Sell / List Driver", icon: PlusCircle },
+      { to: "/my-listings", label: "My Listings", icon: FileText },
       { to: "/ongoing-deals", label: "Ongoing Deals", icon: CheckCircle }
     ]
   },

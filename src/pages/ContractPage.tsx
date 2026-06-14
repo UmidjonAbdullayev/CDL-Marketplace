@@ -13,6 +13,7 @@ export default function ContractPage() {
   const { listingId } = useParams();
   const navigate = useNavigate();
   const { showToast, sessionUser } = useApp();
+  const canStartHiring = sessionUser?.accountType === "carrier";
   const id = Number(listingId);
 
   const [driver, setDriver] = useState<DriverCard | null>(null);
@@ -20,6 +21,13 @@ export default function ContractPage() {
   const [signerName, setSignerName] = useState(sessionUser?.name ?? "");
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!canStartHiring) {
+      showToast("Only carrier accounts can start hiring processes", "error");
+      navigate("/marketplace", { replace: true });
+    }
+  }, [canStartHiring, navigate, showToast]);
 
   useEffect(() => {
     if (!id) return;

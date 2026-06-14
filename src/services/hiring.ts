@@ -272,6 +272,11 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
     supabase.from("conversations").select("id").eq("deal_id", dealIdValue).maybeSingle()
   ]);
 
+  let conversationId = conv?.id ?? null;
+  if (!conversationId && deal.buyer_signed_at && deal.seller_signed_at) {
+    conversationId = await ensureDealConversation(dealIdValue);
+  }
+
   const companyMap = new Map((companies ?? []).map((c) => [c.id, c]));
   const listing = listingResult.data;
   const listingCard = listing
@@ -302,7 +307,7 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
     driverCard: listingCard,
     events: events ?? [],
     documents: documents ?? [],
-    conversationId: conv?.id ?? null
+    conversationId
   };
 }
 
@@ -341,11 +346,45 @@ export async function fetchDealMessages(conversationId: string) {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("messages")
-    .select("id, direction, body, created_at, attachment_name")
+    .select("id, direction, body, created_at, attachment_name, sender_company_id")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return data ?? [];
+}
+
+export type DealMessageRow = Awaited<ReturnType<typeof fetchDealMessages>>[number];
+
+/** Messages use buyer-centric direction when sender_company_id is missing (legacy rows). */
+export function isOwnDealMessage(
+  msg: DealMessageRow,
+  myCompanyId: string,
+  buyerCompanyId: string
+): boolean {
+  if (!myCompanyId) return false;
+  if (msg.sender_company_id) return msg.sender_company_id === myCompanyId;
+  const amBuyer = myCompanyId === buyerCompanyId;
+  return amBuyer ? msg.direction === "out" : msg.direction === "in";
+}
+
+export function subscribeDealMessages(conversationId: string, onChange: () => void): () => void {
+  if (!supabase) return () => {};
+  const channel = supabase
+    .channel(`deal-messages-${conversationId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`
+      },
+      () => onChange()
+    )
+    .subscribe();
+  return () => {
+    if (supabase) void supabase.removeChannel(channel);
+  };
 }
 
 export async function sendDealMessage(
@@ -354,18 +393,23 @@ export async function sendDealMessage(
   companyId: string,
   buyerCompanyId: string,
   attachmentName?: string
-) {
-  if (!supabase) return;
+): Promise<DealMessageRow | null> {
+  if (!supabase) return null;
   const direction = companyId === buyerCompanyId ? "out" : "in";
-  const { error } = await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    sender_company_id: companyId,
-    direction,
-    body,
-    attachment_name: attachmentName ?? null
-  });
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      sender_company_id: companyId,
+      direction,
+      body,
+      attachment_name: attachmentName ?? null
+    })
+    .select("id, direction, body, created_at, attachment_name, sender_company_id")
+    .single();
   if (error) throw error;
   await supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conversationId);
+  return data as DealMessageRow;
 }
 
 export async function fetchListingForContract(listingId: number): Promise<{ card: DriverCard; sellerId: string } | null> {

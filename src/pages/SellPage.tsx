@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { PageHeader } from "../lib/badges";
 import { fmtPrice } from "../lib/format";
+import { DRIVER_TYPES } from "../lib/driver-types";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { createListing } from "../services/marketplace";
 import type { ScoreFlag } from "../types";
@@ -29,6 +30,7 @@ export default function SellPage() {
   const [availDate, setAvailDate] = useState("2026-06-20");
   const [equipment, setEquipment] = useState("Dry Van");
   const [routePref, setRoutePref] = useState("OTR");
+  const [driverType, setDriverType] = useState("Owner Operator");
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState(350);
   const payout = useMemo(() => fmtPrice(price * 0.85), [price]);
@@ -51,7 +53,8 @@ export default function SellPage() {
         equipment,
         routePref,
         notes,
-        price
+        price,
+        driverType
       });
       invalidateDataViews(["my-listings", "admin", "dashboard", "marketplace"]);
       showToast("Listing published successfully!", "success");
@@ -129,6 +132,11 @@ export default function SellPage() {
           <div className="form-group"><label>Route Preference</label>
             <select value={routePref} onChange={(e) => setRoutePref(e.target.value)}><option>OTR</option><option>Regional</option><option>Local</option><option>Dedicated</option></select>
           </div>
+          <div className="form-group"><label>Driver Type *</label>
+            <select value={driverType} onChange={(e) => setDriverType(e.target.value)}>
+              {DRIVER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
           <div className="form-group"><label>Additional Notes for Buyers</label><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Driver preferences, restrictions, special qualifications..." /></div>
         </div>
         <div className={`form-step ${step === 4 ? "active" : ""}`}>
@@ -163,6 +171,7 @@ export default function SellPage() {
           <h3 style={{ marginBottom: 16 }}>Step 7: Review & Publish</h3>
           <div style={{ fontSize: 13, lineHeight: 2, background: "var(--gray-50)", padding: 20, borderRadius: 8 }}>
             <strong>Driver:</strong> {first} {last}<br />
+            <strong>Driver Type:</strong> {driverType}<br />
             <strong>Price:</strong> {fmtPrice(price)}<br />
             <strong>Your Payout:</strong> {fmtPrice(price * 0.85)} (after 15% fee)<br />
             <strong>Consent:</strong> Confirmed<br />

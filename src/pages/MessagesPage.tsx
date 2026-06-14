@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MessengerPanel } from "../components/chat/MessengerPanel";
 import { Pagination } from "../components/ui/Pagination";
 import { PageHeader } from "../lib/badges";
+import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
+import { isOwnInboxMessage } from "../services/marketplace";
 import { DEFAULT_PAGE_SIZE } from "../services/marketplace";
-
-type Message = { side: "in" | "out"; text: string; time: string };
 
 function formatMsgTime(iso: string) {
   const d = new Date(iso);
@@ -15,6 +16,7 @@ function formatMsgTime(iso: string) {
 }
 
 export default function MessagesPage() {
+  const { sessionUser } = useApp();
   const {
     messagesPage: page,
     setMessagesPage: setPage,
@@ -31,26 +33,43 @@ export default function MessagesPage() {
   } = useExchangeData();
 
   const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeConv = useMemo(
     () => conversations.find((c) => c.id === active) ?? conversations[0],
     [conversations, active]
   );
 
-  const allMsgs: Message[] = useMemo(
-    () => messages.map((m) => ({
-      side: m.direction as "in" | "out",
-      text: m.body,
-      time: formatMsgTime(m.created_at)
-    })),
-    [messages]
+  const myCompanyId = sessionUser?.companyId ?? "";
+  const buyerCompanyId = activeConv?.buyer_company_id ?? "";
+
+  const bubbles = useMemo(
+    () =>
+      messages.map((m) => ({
+        id: m.id,
+        body: m.body,
+        isMine: isOwnInboxMessage(m, myCompanyId, buyerCompanyId),
+        attachmentName: m.attachment_name,
+        timeLabel: formatMsgTime(m.created_at)
+      })),
+    [messages, myCompanyId, buyerCompanyId]
   );
 
-  const send = () => {
-    if (!input.trim() || !activeConv) return;
-    const text = input;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, activeConv?.id]);
+
+  const send = async () => {
+    if (!input.trim() || !activeConv || sending) return;
+    const text = input.trim();
     setInput("");
-    void sendConversationMessage(text);
+    setSending(true);
+    try {
+      await sendConversationMessage(text);
+    } finally {
+      setSending(false);
+    }
   };
 
   if (listLoading && conversations.length === 0) {
@@ -62,12 +81,18 @@ export default function MessagesPage() {
     );
   }
 
+  const chatTitle = activeConv
+    ? activeConv.is_support
+      ? "CDL Exchange Support"
+      : (activeConv.subject || (activeConv.companies?.name ?? "Conversation"))
+    : "";
+
   return (
-    <div className="page active">
+    <div className="page active messages-page">
       <PageHeader title="Messages" desc="Communicate with sellers, buyers, and CDL Exchange support." />
       {listRefreshing ? <div className="t-caption t-secondary" style={{ marginBottom: 8 }}>Updating...</div> : null}
       <div className="messages-layout">
-        <div>
+        <div className="messages-sidebar">
           <div className="conv-list" id="convList">
             {conversations.map((c) => (
               <div key={c.id} className={`conv-item ${active === c.id ? "active" : ""}`} onClick={() => setActive(c.id)}>
@@ -80,26 +105,31 @@ export default function MessagesPage() {
               </div>
             ))}
           </div>
-          <Pagination page={page} totalPages={totalPages} total={total} pageSize={DEFAULT_PAGE_SIZE} loading={listLoading || listRefreshing} onPageChange={setPage} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={DEFAULT_PAGE_SIZE}
+            loading={listLoading || listRefreshing}
+            onPageChange={setPage}
+          />
         </div>
-        <div className="chat-area" id="chatArea">
+        <div className="messages-chat-column">
           {activeConv ? (
-            <>
-              <div className="chat-header">{activeConv.subject || activeConv.companies?.name}</div>
-              <div className="chat-messages" id="chatMessages">
-                {messagesLoading ? (
-                  <div className="t-secondary" style={{ padding: 16 }}>Loading messages...</div>
-                ) : (
-                  allMsgs.map((m, i) => <div key={`${m.time}-${i}`} className={`msg ${m.side}`}>{m.text}<div className="time">{m.time}</div></div>)
-                )}
-              </div>
-              <div className="chat-input">
-                <input type="text" id="chatInput" placeholder="Type a message..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
-                <button className="btn btn-primary" id="sendChat" onClick={send}>Send</button>
-              </div>
-            </>
+            <MessengerPanel
+              className="messenger-panel--embedded"
+              title={chatTitle}
+              messages={bubbles}
+              loading={messagesLoading}
+              emptyMessage="No messages yet. Start the conversation."
+              value={input}
+              onChange={setInput}
+              onSend={() => void send()}
+              sending={sending}
+              messagesEndRef={messagesEndRef}
+            />
           ) : (
-            <div className="t-secondary" style={{ padding: 24 }}>No conversations yet.</div>
+            <div className="messages-empty t-secondary">No conversations yet.</div>
           )}
         </div>
       </div>
