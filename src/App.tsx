@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppProvider } from "./context/AppContext";
 import { ExchangeDataProvider } from "./context/ExchangeDataContext";
 import { AppShell } from "./components/layout/AppShell";
+import { AdminGuard } from "./components/layout/AdminGuard";
 import DashboardPage from "./pages/DashboardPage";
 import MarketplacePage from "./pages/MarketplacePage";
 import DriverDetailPage from "./pages/DriverDetailPage";
@@ -48,7 +49,9 @@ export default function App() {
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/admin" element={<AdminPage />} />
+            <Route element={<AdminGuard />}>
+              <Route path="/admin" element={<AdminPage />} />
+            </Route>
           </Route>
           </Routes>
         </ExchangeDataProvider>

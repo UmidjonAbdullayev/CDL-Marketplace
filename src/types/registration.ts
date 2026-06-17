@@ -1,5 +1,7 @@
 export type AccountType = "carrier" | "agency" | "solo_recruiter";
 
+export type AdminRole = "none" | "admin" | "manager";
+
 export type CarrierPlanId = "free" | "starter" | "growth" | "pro_fleet";
 
 export type RegistrationStatus =
@@ -76,6 +78,7 @@ export type RegistrationAccount = {
   suspended: boolean;
   company_id: string | null;
   is_admin: boolean;
+  admin_role: AdminRole;
   created_at: string;
   updated_at: string;
 };

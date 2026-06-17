@@ -15,6 +15,10 @@ export interface DriverCard {
   score: ScoreFlag;
   verified: boolean;
   price: number;
+  priceLabel?: string;
+  listPrice?: number;
+  netPayout?: number | null;
+  carrierPrice?: number | null;
   seller: string;
   sellerRating: number;
   hotScore?: number;
@@ -38,6 +42,10 @@ export interface Driver {
   score: ScoreFlag;
   verified: boolean;
   price: number;
+  priceLabel?: string;
+  listPrice?: number;
+  netPayout?: number | null;
+  carrierPrice?: number | null;
   seller: string;
   sellerRating: number;
   phone: string;

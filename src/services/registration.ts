@@ -62,13 +62,13 @@ export async function ensureCompanyForAccount(account: RegistrationAccount): Pro
 
   const { data: row, error } = await supabase
     .from("registration_accounts")
-    .select("company_id, is_admin")
+    .select("company_id, is_admin, admin_role")
     .eq("id", account.id)
     .single();
   if (error) throw error;
 
   if (row?.company_id) {
-    return { ...account, company_id: row.company_id, is_admin: Boolean(row.is_admin) };
+    return { ...account, company_id: row.company_id, is_admin: Boolean(row.is_admin), admin_role: row.admin_role ?? "none" };
   }
 
   const companyId = await createCompanyForAccount(account);
@@ -128,6 +128,7 @@ export async function submitRegistration(
       suspended: false,
       company_id: null,
       is_admin: false,
+      admin_role: "none",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };

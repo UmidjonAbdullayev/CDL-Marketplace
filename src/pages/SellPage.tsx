@@ -6,6 +6,7 @@ import { PageHeader } from "../lib/badges";
 import { fmtPrice } from "../lib/format";
 import { DRIVER_TYPES } from "../lib/driver-types";
 import { invalidateDataViews } from "../lib/dataInvalidation";
+import { computeListingPricing, maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { createListing } from "../services/marketplace";
 import type { ScoreFlag } from "../types";
 
@@ -33,9 +34,16 @@ export default function SellPage() {
   const [driverType, setDriverType] = useState("Owner Operator");
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState(350);
-  const payout = useMemo(() => fmtPrice(price * 0.85), [price]);
+  const priceCap = useMemo(() => maxRecruiterPrice(driverType), [driverType]);
+  const pricing = useMemo(() => computeListingPricing(Math.min(price, priceCap), 0), [price, priceCap]);
+  const payout = useMemo(() => fmtPrice(pricing.netPayout), [pricing.netPayout]);
 
   const publish = async () => {
+    const capError = validateRecruiterListPrice(price, driverType);
+    if (capError) {
+      showToast(capError, "error");
+      return;
+    }
     setSubmitting(true);
     try {
       await createListing({
@@ -160,11 +168,22 @@ export default function SellPage() {
         <div className={`form-step ${step === 6 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 6: Pricing</h3>
           <div className="form-row">
-            <div className="form-group"><label>Listing Price *</label><input type="number" value={price} min={50} onChange={(e) => setPrice(Number(e.target.value || 0))} /></div>
+            <div className="form-group">
+              <label>Listing Price *</label>
+              <input
+                type="number"
+                value={price}
+                min={50}
+                max={priceCap}
+                onChange={(e) => setPrice(Math.min(priceCap, Math.max(50, Number(e.target.value) || 50)))}
+              />
+              <span className="t-caption t-secondary">Max {fmtPrice(priceCap)} for {driverType}</span>
+            </div>
             <div className="form-group"><label>Listing Duration</label><select><option>30 days</option><option>60 days</option><option>90 days</option></select></div>
           </div>
           <div style={{ marginTop: 12, padding: 12, background: "var(--gray-50)", borderRadius: 8, fontSize: 13 }}>
             Platform fee: 15% commission on completed sale. You receive <strong id="sellerPayout">{payout}</strong> after sale.
+            Carriers see a separate admin-approved recruiting fee — not your list price.
           </div>
         </div>
         <div className={`form-step ${step === 7 ? "active" : ""}`}>
@@ -172,8 +191,8 @@ export default function SellPage() {
           <div style={{ fontSize: 13, lineHeight: 2, background: "var(--gray-50)", padding: 20, borderRadius: 8 }}>
             <strong>Driver:</strong> {first} {last}<br />
             <strong>Driver Type:</strong> {driverType}<br />
-            <strong>Price:</strong> {fmtPrice(price)}<br />
-            <strong>Your Payout:</strong> {fmtPrice(price * 0.85)} (after 15% fee)<br />
+            <strong>List Price:</strong> {fmtPrice(price)}<br />
+            <strong>Your Payout:</strong> {fmtPrice(pricing.netPayout)} (after 15% fee)<br />
             <strong>Consent:</strong> Confirmed<br />
             <strong>Status:</strong> Pending admin approval
           </div>

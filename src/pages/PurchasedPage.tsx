@@ -46,7 +46,7 @@ export default function PurchasedPage() {
             <tr><td colSpan={8}><div className="empty-state"><div className="empty-icon"><Inbox /></div><p className="t-secondary">No purchased leads yet. <Link to="/marketplace">Browse the marketplace</Link> to buy your first driver lead.</p></div></td></tr>
           ) : (
             rows.map((p) => {
-              const d = p.driver_listings ? rowToCard(p.driver_listings) : null;
+              const d = p.driver_listings ? rowToCard(p.driver_listings, "carrier") : null;
               if (!d) return null;
               return (
                 <tr key={p.id}>

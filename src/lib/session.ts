@@ -1,4 +1,4 @@
-import type { AccountType, CarrierPlanId, RegistrationAccount, RegistrationStatus } from "../types/registration";
+import type { AccountType, AdminRole, CarrierPlanId, RegistrationAccount, RegistrationStatus } from "../types/registration";
 
 export type SessionUser = {
   id: string;
@@ -11,6 +11,7 @@ export type SessionUser = {
   status: RegistrationStatus;
   companyId: string;
   isAdmin: boolean;
+  adminRole: AdminRole;
   walletBalance: number;
 };
 
@@ -66,6 +67,7 @@ export function sessionFromAccount(
     selectedPlan: account.account_type === "carrier" ? account.selected_plan ?? "free" : null,
     companyId: account.company_id ?? "",
     isAdmin: Boolean(account.is_admin),
+    adminRole: account.admin_role ?? "none",
     walletBalance: Number(company?.wallet_balance ?? 0)
   };
 }
@@ -98,6 +100,9 @@ export function initSession(): SessionUser | null {
   }
   if (user.accountType === "carrier" && user.selectedPlan === undefined) {
     return { ...user, selectedPlan: "free" };
+  }
+  if (user.adminRole === undefined) {
+    return { ...user, adminRole: user.isAdmin ? "admin" : "none" };
   }
   return user;
 }

@@ -1782,6 +1782,18 @@ tbody tr:hover td { background: var(--bg); }
 .admin-reg-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .admin-reject-row { display: flex; gap: 8px; }
 .admin-reject-row input { flex: 1; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-btn); }
+.admin-page .tabs { margin-bottom: 16px; }
+.admin-role-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: var(--gray-50); border-radius: 8px; border: 1px solid var(--border); }
+.admin-approval-layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
+.admin-review-panel { position: sticky; top: 16px; }
+.admin-review-body { font-size: 13px; }
+.admin-pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.admin-pricing-grid .lbl { display: block; font-size: 11px; color: var(--gray-500); text-transform: uppercase; margin-bottom: 4px; }
+.approval-row-active { background: var(--blue-light); }
+@media (max-width: 1024px) {
+  .admin-approval-layout { grid-template-columns: 1fr; }
+  .admin-review-panel { position: static; }
+}
 tr.row-selected td { background: var(--primary-light); }
 
 @media (max-width: 1100px) {

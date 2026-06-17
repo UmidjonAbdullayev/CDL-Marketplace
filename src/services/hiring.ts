@@ -137,11 +137,12 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
 
   const { data: listing, error: listingErr } = await supabase
     .from("driver_listings")
-    .select("price, seller_company_id, cdl_class, equipment, state, first_name, last_name")
+    .select("price, carrier_price, seller_company_id, cdl_class, equipment, state, first_name, last_name")
     .eq("id", listingId)
     .single();
   if (listingErr || !listing) throw new Error("Listing not found");
 
+  const dealAmount = listing.carrier_price ?? listing.price;
   const id = dealId();
   const now = new Date().toISOString();
 
@@ -150,10 +151,10 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
     listing_id: listingId,
     buyer_company_id: getActiveCompanyId(),
     seller_company_id: listing.seller_company_id,
-    amount: listing.price,
+    amount: dealAmount,
     status: "Awaiting Seller Signature",
     hiring_stage: "contract",
-    escrow_amount: listing.price,
+    escrow_amount: dealAmount,
     buyer_signed_at: now,
     buyer_signer_name: buyerSignerName
   });
@@ -165,7 +166,7 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
   await supabase.from("activities").insert({
     activity_type: "deal",
     title: "Hiring process started",
-    description: `${listing.cdl_class} ${listing.equipment} · ${listing.state} · recruiting fee $${listing.price}`,
+    description: `${listing.cdl_class} ${listing.equipment} · ${listing.state} · recruiting fee $${dealAmount}`,
     status_label: "CONTRACT",
     status_class: "listed"
   });
@@ -283,9 +284,9 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
   const companyMap = new Map((companies ?? []).map((c) => [c.id, c]));
   const listing = listingResult.data;
   const listingCard = listing
-    ? rowToCard({ ...listing, companies: unwrapRelation(listing.companies) } as Parameters<typeof rowToCard>[0])
+    ? rowToCard({ ...listing, companies: unwrapRelation(listing.companies) } as Parameters<typeof rowToCard>[0], "carrier")
     : null;
-  const driver = listing ? rowToDriver(listing as Parameters<typeof rowToDriver>[0]) : null;
+  const driver = listing ? rowToDriver(listing as Parameters<typeof rowToDriver>[0], "carrier") : null;
   const documentsWithUrls: DealDocumentRow[] = (documents ?? []).map((doc) => ({
     ...(doc as DealDocumentRow),
     download_url: doc.storage_path ? getAttachmentViewUrl(doc.storage_path) : null
@@ -472,5 +473,5 @@ export async function fetchListingForContract(listingId: number): Promise<{ card
   if (error) throw error;
   if (!data) return null;
   const row = data as { seller_company_id: string } & Parameters<typeof rowToCard>[0];
-  return { card: rowToCard(row), sellerId: row.seller_company_id };
+  return { card: rowToCard(row, "carrier"), sellerId: row.seller_company_id };
 }

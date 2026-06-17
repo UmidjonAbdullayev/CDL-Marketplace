@@ -72,9 +72,13 @@ export default function DriverDetailPage() {
         <div className="detail-sidebar">
           <div className="card">
             <div className="card-body">
-              <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase", marginBottom: 4 }}>Platform Recruiting Fee</div>
+              <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase", marginBottom: 4 }}>{driver.priceLabel ?? "Platform Recruiting Fee"}</div>
               <div className="detail-price">{fmtRecruitingFee(driver.price)}</div>
-              <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>Fee for recruiting coordination through CDL Exchange</p>
+              <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
+                {canStartHiring
+                  ? "Fee for recruiting coordination through CDL Exchange (includes platform markup)"
+                  : "Your net payout after the 15% platform fee is deducted from your list price"}
+              </p>
               <div className="detail-seller"><StarRating rating={driver.sellerRating} /> {driver.seller}</div>
               {canStartHiring ? (
                 <button

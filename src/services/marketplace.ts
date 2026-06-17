@@ -2,7 +2,9 @@ import { getActiveCompanyId } from "../lib/activeCompany";
 import type { DriverType } from "../lib/driver-types";
 import { supabase } from "../lib/supabase";
 import type { Driver, DriverCard, HotListing, Paginated, ScoreFlag } from "../types";
+import { computeListingPricing, displayPriceForViewer, type MarketplaceViewer, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { enrichMessagesWithAttachmentUrls, uploadChatAttachment } from "./chatAttachments";
+import { autoAssignListing } from "./platformAdmin";
 
 const NEW_LISTING_MS = 7 * 86400000;
 
@@ -22,6 +24,9 @@ type ListingCardRow = {
   score_flag: ScoreFlag;
   verified: boolean;
   price: number;
+  platform_fee?: number | null;
+  net_payout?: number | null;
+  carrier_price?: number | null;
   driver_type: DriverType;
   featured: boolean;
   created_at: string;
@@ -43,7 +48,7 @@ type ListingDetailRow = ListingCardRow & {
 };
 
 export const LISTING_CARD_SELECT =
-  "id, first_name, last_name, state, years_exp, cdl_class, equipment, available_date, score_flag, verified, price, hot_score, route_pref, driver_type, featured, created_at, companies (name, rating)";
+  "id, first_name, last_name, state, years_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, companies (name, rating)";
 
 export const LISTING_DETAIL_SELECT =
   `${LISTING_CARD_SELECT}, endorsements, phone, email, cdl_number, documents, notes, route_pref, status, views, hot_score, seller_company_id`;
@@ -70,10 +75,11 @@ function escapeIlike(term: string): string {
 
 type ListingCardRowWithHot = ListingCardRow & { hot_score?: number | null; route_pref?: string };
 
-export function rowToCard(row: ListingCardRowWithHot): DriverCard {
+export function rowToCard(row: ListingCardRowWithHot, viewer: MarketplaceViewer = "carrier"): DriverCard {
   const company = unwrapRelation(row.companies);
   const hotScore = row.hot_score ?? 0;
   const createdAt = row.created_at ?? new Date().toISOString();
+  const { amount, label } = displayPriceForViewer(viewer, row);
   return {
     id: row.id,
     first: row.first_name,
@@ -85,8 +91,12 @@ export function rowToCard(row: ListingCardRowWithHot): DriverCard {
     avail: row.available_date,
     score: row.score_flag,
     verified: row.verified,
-    price: row.price,
-    seller: company?.name ?? "Unknown Seller",
+    price: amount,
+    priceLabel: label,
+    listPrice: row.price,
+    netPayout: row.net_payout ?? null,
+    carrierPrice: row.carrier_price ?? null,
+    seller: company?.name ?? "Verified Seller",
     sellerRating: Number(company?.rating ?? 4),
     hotScore,
     isTrending: hotScore >= 80,
@@ -97,8 +107,8 @@ export function rowToCard(row: ListingCardRowWithHot): DriverCard {
   };
 }
 
-export function rowToDriver(row: ListingDetailRow): Driver {
-  const card = rowToCard(row);
+export function rowToDriver(row: ListingDetailRow, viewer: MarketplaceViewer = "carrier"): Driver {
+  const card = rowToCard(row, viewer);
   return {
     ...card,
     endorse: row.endorsements ?? [],
@@ -156,7 +166,7 @@ export async function fetchMarketplaceStates(): Promise<string[]> {
 
 export async function fetchDriverCardsPage(
   filters: ListingFilters,
-  { page = 1, pageSize = DEFAULT_PAGE_SIZE }: PageParams = {}
+  { page = 1, pageSize = DEFAULT_PAGE_SIZE, viewer = "carrier" as MarketplaceViewer }: PageParams & { viewer?: MarketplaceViewer } = {}
 ): Promise<Paginated<DriverCard>> {
   if (!supabase) return toPaginated([], 0, page, pageSize);
 
@@ -169,13 +179,25 @@ export async function fetchDriverCardsPage(
     .select(LISTING_CARD_SELECT, { count: "exact" })
     .in("status", ["active", "reserved"]);
 
+  if (viewer === "carrier") {
+    q = q.not("carrier_price", "is", null).gt("carrier_price", 0);
+  }
+
   if (filters.state) q = q.eq("state", filters.state);
   if (filters.cdl) q = q.eq("cdl_class", filters.cdl);
   if (filters.exp) q = q.gte("years_exp", filters.exp);
   if (filters.equip) q = q.eq("equipment", filters.equip);
   if (filters.score) q = q.eq("score_flag", filters.score);
-  if (filters.priceMin) q = q.gte("price", filters.priceMin);
-  if (filters.priceMax && filters.priceMax < 99999) q = q.lte("price", filters.priceMax);
+  if (filters.priceMin) {
+    q = viewer === "carrier"
+      ? q.gte("carrier_price", filters.priceMin)
+      : q.gte("net_payout", filters.priceMin);
+  }
+  if (filters.priceMax && filters.priceMax < 99999) {
+    q = viewer === "carrier"
+      ? q.lte("carrier_price", filters.priceMax)
+      : q.lte("net_payout", filters.priceMax);
+  }
   if (filters.verified) q = q.eq("verified", true);
   if (filters.route) q = q.eq("route_pref", filters.route);
   if (filters.minHotScore) q = q.gte("hot_score", filters.minHotScore);
@@ -196,11 +218,11 @@ export async function fetchDriverCardsPage(
   const { data, error, count } = await q.range(from, to);
   if (error) throw error;
 
-  const items = ((data ?? []) as unknown as ListingCardRow[]).map(rowToCard);
+  const items = ((data ?? []) as unknown as ListingCardRow[]).map((row) => rowToCard(row, viewer));
   return toPaginated(items, count, page, pageSize);
 }
 
-export async function fetchListingCardById(id: number): Promise<DriverCard | null> {
+export async function fetchListingCardById(id: number, viewer: MarketplaceViewer = "carrier"): Promise<DriverCard | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("driver_listings")
@@ -208,11 +230,11 @@ export async function fetchListingCardById(id: number): Promise<DriverCard | nul
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
-  return data ? rowToCard(data as unknown as ListingCardRow) : null;
+  return data ? rowToCard(data as unknown as ListingCardRow, viewer) : null;
 }
 
 /** Full driver profile — use only on detail page */
-export async function fetchListingById(id: number): Promise<Driver | null> {
+export async function fetchListingById(id: number, viewer: MarketplaceViewer = "carrier"): Promise<Driver | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("driver_listings")
@@ -220,7 +242,7 @@ export async function fetchListingById(id: number): Promise<Driver | null> {
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
-  return data ? rowToDriver(data as unknown as ListingDetailRow) : null;
+  return data ? rowToDriver(data as unknown as ListingDetailRow, viewer) : null;
 }
 
 export async function fetchHotListings(): Promise<HotListing[]> {
@@ -684,6 +706,7 @@ export type SellerListingRow = {
   state: string;
   equipment: string;
   price: number;
+  net_payout: number | null;
   views: number;
   status: string;
 };
@@ -699,7 +722,7 @@ export async function fetchSellerListingsPage(
 
   let q = supabase
     .from("driver_listings")
-    .select("id, first_name, last_name, state, equipment, price, views, status", { count: "exact" })
+    .select("id, first_name, last_name, state, equipment, price, net_payout, views, status", { count: "exact" })
     .eq("seller_company_id", getActiveCompanyId());
   if (status) q = q.eq("status", status);
 
@@ -749,8 +772,28 @@ export async function fetchSellerReservations() {
 
 export async function updateListingPrice(listingId: number, price: number): Promise<void> {
   if (!supabase) return;
-  const { error } = await supabase.from("driver_listings").update({ price, updated_at: new Date().toISOString() }).eq("id", listingId);
+  const { data: listing, error: fetchErr } = await supabase
+    .from("driver_listings")
+    .select("driver_type")
+    .eq("id", listingId)
+    .single();
+  if (fetchErr || !listing) throw fetchErr ?? new Error("Listing not found");
+
+  const capError = validateRecruiterListPrice(price, listing.driver_type ?? "Owner Operator");
+  if (capError) throw new Error(capError);
+
+  const pricing = computeListingPricing(price, 0);
+  const { error } = await supabase.from("driver_listings").update({
+    price: pricing.listPrice,
+    platform_fee: pricing.platformFee,
+    net_payout: pricing.netPayout,
+    carrier_price: null,
+    admin_markup: 0,
+    status: "pending",
+    updated_at: new Date().toISOString()
+  }).eq("id", listingId);
   if (error) throw error;
+  await autoAssignListing(listingId);
 }
 
 export async function updateListingStatus(listingId: number, status: string): Promise<void> {
@@ -781,6 +824,11 @@ export type NewListingInput = {
 
 export async function createListing(input: NewListingInput): Promise<number> {
   if (!supabase) throw new Error("Supabase not configured");
+  const capError = validateRecruiterListPrice(input.price, input.driverType);
+  if (capError) throw new Error(capError);
+
+  const pricing = computeListingPricing(input.price, 0);
+
   const { data, error } = await supabase.from("driver_listings").insert({
     first_name: input.firstName,
     last_name: input.lastName,
@@ -796,7 +844,11 @@ export async function createListing(input: NewListingInput): Promise<number> {
     equipment: input.equipment,
     route_pref: input.routePref,
     notes: input.notes,
-    price: input.price,
+    price: pricing.listPrice,
+    platform_fee: pricing.platformFee,
+    net_payout: pricing.netPayout,
+    carrier_price: null,
+    admin_markup: 0,
     driver_type: input.driverType,
     documents: input.documents ?? ["CDL Copy"],
     seller_company_id: getActiveCompanyId(),
@@ -805,6 +857,7 @@ export async function createListing(input: NewListingInput): Promise<number> {
     consent_verified: true
   }).select("id").single();
   if (error) throw error;
+  await autoAssignListing(data.id);
   await supabase.from("activities").insert({
     activity_type: "list",
     title: "New listing submitted",

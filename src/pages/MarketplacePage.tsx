@@ -271,7 +271,7 @@ export default function MarketplacePage() {
                     <div className="driver-price-row">
                       <div>
                         <div className="driver-price">{fmtRecruitingFee(d.price)}</div>
-                        <div className="driver-fee-label t-caption t-secondary">Platform recruiting fee</div>
+                        <div className="driver-fee-label t-caption t-secondary">{d.priceLabel ?? "Platform recruiting fee"}</div>
                         {d.isTrending || trendingListingIds.has(d.id) ? (
                           <span className="badge badge-red trending-badge"><Flame className="icon-sm" /> Trending</span>
                         ) : null}

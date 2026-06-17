@@ -77,15 +77,17 @@ export default function MyListingsPage() {
       </div>
       <div className={`tab-panel ${tab === "active" ? "active" : ""}`}>
         <div className="card"><div className="table-wrap"><table>
-          <thead><tr><th>Driver</th><th>State</th><th>Equipment</th><th>Price</th><th>Views</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Driver</th><th>State</th><th>Equipment</th><th>List Price</th><th>Net Payout</th><th>Views</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {loading && rows.length === 0 ? (
-              <tr><td colSpan={7} className="t-secondary">Loading listings...</td></tr>
+              <tr><td colSpan={8} className="t-secondary">Loading listings...</td></tr>
             ) : null}
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{maskDriver(r.first_name, r.last_name)}</td><td>{r.state}</td><td>{r.equipment}</td>
-                <td className="price-cell">{fmtPrice(r.price)}</td><td>{r.views}</td><td>{statusBadge(r.status)}</td>
+                <td className="price-cell">{fmtPrice(r.price)}</td>
+                <td className="price-cell">{fmtPrice(r.net_payout ?? Math.round(r.price * 0.85))}</td>
+                <td>{r.views}</td><td>{statusBadge(r.status)}</td>
                 <td>
                   <button className="btn btn-ghost btn-sm" onClick={() => editPrice(r.id)}>Edit Price</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => togglePause(r)}>{r.status === "active" ? "Pause" : "Resume"}</button>

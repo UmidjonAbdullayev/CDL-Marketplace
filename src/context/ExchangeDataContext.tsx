@@ -12,6 +12,7 @@ import { useLocation } from "react-router-dom";
 import { useApp } from "./AppContext";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { registerDataInvalidation } from "../lib/dataInvalidation";
+import { marketplaceViewerFromAccountType } from "../lib/listing-pricing";
 import { postedWithinSince } from "../lib/driver-types";
 import { fmtPrice } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -285,6 +286,10 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   const { searchQuery, debouncedSearch: appDebouncedSearch, sessionUser } = useApp();
   const debouncedSearch = useDebouncedValue(searchQuery, 100);
   const effectiveSearch = debouncedSearch || appDebouncedSearch;
+  const marketplaceViewer = useMemo(
+    () => marketplaceViewerFromAccountType(sessionUser?.accountType),
+    [sessionUser?.accountType]
+  );
 
   const [appLoading, setAppLoading] = useState(isSupabaseConfigured);
   const [badges, setBadges] = useState({ disputes: 0, messages: 0 });
@@ -487,7 +492,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
               marketplaceFilters.postedWithin as "" | "24h" | "7d" | "30d" | "90d"
             )
           },
-          { page: marketplacePage, pageSize: DEFAULT_PAGE_SIZE }
+          { page: marketplacePage, pageSize: DEFAULT_PAGE_SIZE, viewer: marketplaceViewer }
         ),
         fetchMarketplaceStates()
       ]);
@@ -509,7 +514,8 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     marketplacePage,
     effectiveSearch,
     marketplaceLoadedAt,
-    marketplaceHotOnly
+    marketplaceHotOnly,
+    marketplaceViewer
   ]);
 
   const refreshPurchased = useCallback(async (force = false) => {
@@ -711,7 +717,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     }
     setDriverDetailLoading(true);
     try {
-      const driver = await fetchListingById(id);
+      const driver = await fetchListingById(id, marketplaceViewer);
       if (driver) setDriverDetails((prev) => ({ ...prev, [id]: driver }));
       return driver;
     } catch (err) {
@@ -720,7 +726,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     } finally {
       setDriverDetailLoading(false);
     }
-  }, [driverDetails]);
+  }, [driverDetails, marketplaceViewer]);
 
   const invalidateViews = useCallback((views: ViewKey | ViewKey[]) => {
     const list = Array.isArray(views) ? views : [views];
@@ -863,6 +869,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     messagesPage,
     listingsQueryKey,
     adminPage,
+    marketplaceViewer,
     refreshDashboard,
     refreshMarketplace,
     refreshPurchased,
