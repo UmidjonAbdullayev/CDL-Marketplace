@@ -228,12 +228,111 @@ export type PlatformOngoingDeal = {
   buyer_name: string;
   seller_name: string;
   driver_label: string;
+  driver_full_name: string;
+  driver_type: string;
+  list_price: number | null;
+  carrier_price: number;
   assigned_admin_id: string | null;
   assigned_admin_name: string;
+  buyer_signed_at: string | null;
+  seller_signed_at: string | null;
+  created_at: string;
   updated_at: string;
+  carrier_conversation_id: string | null;
+  recruiter_conversation_id: string | null;
 };
 
+function mapPlatformDealRows(
+  deals: {
+    id: string;
+    listing_id: number | null;
+    amount: number;
+    status: string;
+    hiring_stage: string;
+    buyer_company_id: string;
+    seller_company_id: string;
+    buyer_signed_at: string | null;
+    seller_signed_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }[],
+  listings: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    driver_type: string;
+    price: number;
+    carrier_price: number | null;
+    assigned_admin_id: string | null;
+  }[],
+  companies: { id: string; name: string }[],
+  convs: { id: string; deal_id: string | null; channel_type: string }[],
+  admins: PlatformAdmin[]
+): PlatformOngoingDeal[] {
+  const companyMap = new Map(companies.map((c) => [c.id, c.name]));
+  const listingMap = new Map(listings.map((l) => [l.id, l]));
+  const adminMap = new Map(admins.map((a) => [a.id, a.name]));
+  const convByDeal = new Map<string, { carrier?: string; recruiter?: string }>();
+  for (const c of convs) {
+    if (!c.deal_id) continue;
+    const entry = convByDeal.get(c.deal_id) ?? {};
+    if (c.channel_type === "carrier_admin") entry.carrier = c.id;
+    if (c.channel_type === "recruiter_admin") entry.recruiter = c.id;
+    convByDeal.set(c.deal_id, entry);
+  }
+
+  return deals.map((d) => {
+    const listing = d.listing_id ? listingMap.get(d.listing_id) : null;
+    const assignedId = listing?.assigned_admin_id ?? null;
+    const channels = convByDeal.get(d.id);
+    return {
+      id: d.id,
+      listing_id: d.listing_id,
+      amount: d.amount,
+      status: d.status,
+      hiring_stage: d.hiring_stage,
+      buyer_name: companyMap.get(d.buyer_company_id) ?? "—",
+      seller_name: companyMap.get(d.seller_company_id) ?? "—",
+      driver_label: listing ? `${listing.first_name} ${listing.last_name.charAt(0)}.` : "—",
+      driver_full_name: listing ? `${listing.first_name} ${listing.last_name}` : "—",
+      driver_type: listing?.driver_type ?? "—",
+      list_price: listing?.price ?? null,
+      carrier_price: listing?.carrier_price ?? d.amount,
+      assigned_admin_id: assignedId,
+      assigned_admin_name: assignedId ? adminMap.get(assignedId) ?? "—" : "Unassigned",
+      buyer_signed_at: d.buyer_signed_at,
+      seller_signed_at: d.seller_signed_at,
+      created_at: d.created_at,
+      updated_at: d.updated_at,
+      carrier_conversation_id: channels?.carrier ?? null,
+      recruiter_conversation_id: channels?.recruiter ?? null
+    };
+  });
+}
+
+export function classifyDealBucket(deal: Pick<PlatformOngoingDeal, "status" | "hiring_stage" | "buyer_signed_at" | "seller_signed_at">): "active" | "on_hold" | "completed" {
+  if (deal.status === "Completed" || deal.hiring_stage === "completed") return "completed";
+  if (
+    !deal.buyer_signed_at ||
+    !deal.seller_signed_at ||
+    deal.status.includes("Awaiting") ||
+    deal.status.includes("Contract") ||
+    deal.status === "Contract Pending"
+  ) {
+    return "on_hold";
+  }
+  return "active";
+}
+
 export async function fetchPlatformOngoingDeals(
+  adminId: string,
+  adminRole: AdminRole
+): Promise<PlatformOngoingDeal[]> {
+  const all = await fetchPlatformDealsDashboard(adminId, adminRole);
+  return all.filter((d) => classifyDealBucket(d) !== "completed");
+}
+
+export async function fetchPlatformDealsDashboard(
   adminId: string,
   adminRole: AdminRole
 ): Promise<PlatformOngoingDeal[]> {
@@ -241,46 +340,29 @@ export async function fetchPlatformOngoingDeals(
 
   const { data: deals, error } = await supabase
     .from("deals")
-    .select("id, listing_id, amount, status, hiring_stage, buyer_company_id, seller_company_id, updated_at")
-    .not("status", "eq", "Completed")
+    .select("id, listing_id, amount, status, hiring_stage, buyer_company_id, seller_company_id, buyer_signed_at, seller_signed_at, created_at, updated_at")
     .order("updated_at", { ascending: false });
   if (error) throw error;
   if (!deals?.length) return [];
 
   const listingIds = deals.map((d) => d.listing_id).filter((id): id is number => id != null);
   const companyIds = [...new Set(deals.flatMap((d) => [d.buyer_company_id, d.seller_company_id]))];
+  const dealIds = deals.map((d) => d.id);
 
-  const [{ data: companies }, { data: listings }, admins] = await Promise.all([
+  const [{ data: companies }, { data: listings }, { data: convs }, admins] = await Promise.all([
     supabase.from("companies").select("id, name").in("id", companyIds),
     listingIds.length
-      ? supabase.from("driver_listings").select("id, first_name, last_name, assigned_admin_id").in("id", listingIds)
-      : Promise.resolve({ data: [] as { id: number; first_name: string; last_name: string; assigned_admin_id: string | null }[] }),
+      ? supabase
+          .from("driver_listings")
+          .select("id, first_name, last_name, driver_type, price, carrier_price, assigned_admin_id")
+          .in("id", listingIds)
+      : Promise.resolve({ data: [] as { id: number; first_name: string; last_name: string; driver_type: string; price: number; carrier_price: number | null; assigned_admin_id: string | null }[] }),
+    supabase.from("conversations").select("id, deal_id, channel_type").in("deal_id", dealIds),
     fetchPlatformAdmins()
   ]);
 
-  const companyMap = new Map((companies ?? []).map((c) => [c.id, c.name]));
-  const listingMap = new Map((listings ?? []).map((l) => [l.id, l]));
-  const adminMap = new Map(admins.map((a) => [a.id, a.name]));
-
-  return deals
-    .map((d) => {
-      const listing = d.listing_id ? listingMap.get(d.listing_id) : null;
-      const assignedId = listing?.assigned_admin_id ?? null;
-      return {
-        id: d.id,
-        listing_id: d.listing_id,
-        amount: d.amount,
-        status: d.status,
-        hiring_stage: d.hiring_stage,
-        buyer_name: companyMap.get(d.buyer_company_id) ?? "—",
-        seller_name: companyMap.get(d.seller_company_id) ?? "—",
-        driver_label: listing ? `${listing.first_name} ${listing.last_name.charAt(0)}.` : "—",
-        assigned_admin_id: assignedId,
-        assigned_admin_name: assignedId ? adminMap.get(assignedId) ?? "—" : "Unassigned",
-        updated_at: d.updated_at
-      };
-    })
-    .filter((row) => adminRole === "manager" || row.assigned_admin_id === adminId);
+  const rows = mapPlatformDealRows(deals, listings ?? [], companies ?? [], convs ?? [], admins);
+  return adminRole === "manager" ? rows : rows.filter((row) => row.assigned_admin_id === adminId);
 }
 
 export async function assignDealListingAdmin(listingId: number, adminId: string | null): Promise<void> {

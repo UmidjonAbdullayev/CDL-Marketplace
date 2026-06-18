@@ -401,6 +401,41 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
   };
 }
 
+export type DealInternalNote = {
+  id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+};
+
+export async function fetchDealInternalNotes(dealIdValue: string): Promise<DealInternalNote[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("deal_events")
+    .select("id, title, description, created_at")
+    .eq("deal_id", dealIdValue)
+    .eq("stage", "admin_note")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    author_name: row.title,
+    body: row.description,
+    created_at: row.created_at
+  }));
+}
+
+export async function addDealInternalNote(
+  dealIdValue: string,
+  authorName: string,
+  body: string
+): Promise<void> {
+  if (!supabase) return;
+  const trimmed = body.trim();
+  if (!trimmed) return;
+  await insertDealEvent(dealIdValue, "admin_note", authorName, trimmed);
+}
+
 export async function advanceHiringStageAsAdmin(
   dealIdValue: string,
   stage: HiringStage,

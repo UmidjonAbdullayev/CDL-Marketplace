@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
+  AlertTriangle,
+  Bell,
   CheckCircle2,
   Clock,
   FileText,
-  MessageSquare,
+  Lock,
   User
 } from "lucide-react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { MessengerPanel } from "../components/chat/MessengerPanel";
 import { useApp } from "../context/AppContext";
 import { isPlatformStaff } from "../lib/account-capabilities";
@@ -22,7 +23,6 @@ import {
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
 import {
-  advanceHiringStageAsAdmin,
   fetchDealMessages,
   fetchDealWorkspace,
   isOwnDealMessage,
@@ -35,9 +35,9 @@ import {
   type DealMessageRow,
   type DealWorkspace
 } from "../services/hiring";
-import type { HiringStage } from "../lib/hiring";
+import type { Driver, DriverCard } from "../types";
 
-type Tab = "overview" | "timeline" | "chat" | "documents";
+type PartyTab = "pipeline" | "contracts" | "documents" | "activity";
 
 function formatMsgTime(iso: string) {
   const d = new Date(iso);
@@ -47,21 +47,45 @@ function formatMsgTime(iso: string) {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
+function fmtAvailability(avail: string): string {
+  const d = new Date(avail);
+  if (Number.isNaN(d.getTime()) || d <= new Date()) return "Available Now";
+  return fmtDate(avail);
+}
+
+function cdlScorePct(driver: Driver, card: DriverCard | null): number {
+  if (card?.hotScore && card.hotScore > 0) return card.hotScore;
+  if (driver.score === "green") return 93;
+  if (driver.score === "yellow") return 78;
+  return 65;
+}
+
+function displayStatus(status: string): string {
+  if (status === "Hiring Active" || status === "Contact Released") return "In Progress";
+  if (status.includes("Awaiting") || status.includes("Contract")) return "Pending";
+  return status;
+}
+
+function nextStepLabel(stage: string, chatOpen: boolean): string {
+  if (!chatOpen) return "Awaiting signed agreements";
+  const idx = stageIndex(stage);
+  const current = HIRING_STAGES[idx];
+  if (stage === "completed") return "Hiring process complete";
+  const next = HIRING_STAGES[Math.min(idx + 1, HIRING_STAGES.length - 1)];
+  return current?.key === stage && next ? `Awaiting ${next.label.toLowerCase()}` : "Platform admin will update the next milestone";
+}
+
 export default function DealWorkspacePage() {
   const { dealId } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { showToast, sessionUser } = useApp();
+  const { showToast, sessionUser, openDisputeModal } = useApp();
 
   const [workspace, setWorkspace] = useState<DealWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [partyTab, setPartyTab] = useState<PartyTab>("pipeline");
   const [messages, setMessages] = useState<DealMessageRow[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
-  const [adminChatLane, setAdminChatLane] = useState<"carrier" | "recruiter">(
-    searchParams.get("chat") === "recruiter" ? "recruiter" : "carrier"
-  );
   const [sellerName, setSellerName] = useState(sessionUser?.name ?? "");
   const [sellerAgreed, setSellerAgreed] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -72,6 +96,7 @@ export default function DealWorkspacePage() {
   const myCompanyId = sessionUser?.companyId ?? "";
   const deal = workspace?.deal;
   const driver = workspace?.driver;
+  const driverCard = workspace?.driverCard;
   const isBuyerParty = deal?.buyer_company_id === myCompanyId;
   const isSellerParty = deal?.seller_company_id === myCompanyId;
   const isCarrierParty = isBuyerParty && !isAdmin;
@@ -79,32 +104,37 @@ export default function DealWorkspacePage() {
 
   const carrierChatOpen = Boolean(deal?.buyer_signed_at && workspace?.carrierConversationId);
   const recruiterChatOpen = Boolean(deal?.seller_signed_at && workspace?.recruiterConversationId);
-  const chatOpen = isAdmin
-    ? carrierChatOpen || recruiterChatOpen
-    : isCarrierParty
-      ? carrierChatOpen
-      : isRecruiterParty
-        ? recruiterChatOpen
-        : false;
+  const chatOpen = isCarrierParty
+    ? carrierChatOpen
+    : isRecruiterParty
+      ? recruiterChatOpen
+      : false;
 
-  const channelPartyId = isAdmin
-    ? adminChatLane === "carrier"
-      ? deal?.buyer_company_id
-      : deal?.seller_company_id
-    : isCarrierParty
-      ? deal?.buyer_company_id
-      : deal?.seller_company_id;
+  const channelPartyId = isCarrierParty
+    ? deal?.buyer_company_id
+    : deal?.seller_company_id;
 
-  const conversationId = isAdmin
-    ? adminChatLane === "carrier"
-      ? workspace?.carrierConversationId
-      : workspace?.recruiterConversationId
-    : isCarrierParty
-      ? workspace?.carrierConversationId
-      : workspace?.recruiterConversationId ?? null;
+  const conversationId = isCarrierParty
+    ? workspace?.carrierConversationId
+    : workspace?.recruiterConversationId ?? null;
 
   const currentStageIdx = stageIndex(deal?.hiring_stage ?? "contract");
   const needsSellerSign = Boolean(deal && !deal.seller_signed_at && deal.buyer_signed_at);
+
+  const recruitmentFee = useMemo(() => {
+    const listPrice = workspace?.listPrice ?? null;
+    const carrierPrice = workspace?.carrierPrice ?? deal?.amount ?? 0;
+    if (isRecruiterParty) {
+      return {
+        label: "Recruitment Fee",
+        value: listPrice != null ? fmtRecruitingFee(listPrice) : "—"
+      };
+    }
+    return {
+      label: "Recruitment Fee",
+      value: fmtRecruitingFee(carrierPrice)
+    };
+  }, [workspace, deal, isRecruiterParty]);
 
   const load = useCallback(async () => {
     if (!dealId) return;
@@ -127,8 +157,7 @@ export default function DealWorkspacePage() {
   const pullMessages = useCallback(async () => {
     if (!conversationId) return;
     try {
-      const fresh = await fetchDealMessages(conversationId);
-      setMessages(fresh);
+      setMessages(await fetchDealMessages(conversationId));
     } catch {
       /* background refresh */
     }
@@ -139,17 +168,14 @@ export default function DealWorkspacePage() {
   }, [conversationId, pullMessages]);
 
   useEffect(() => {
-    if (tab !== "chat" || !chatOpen || !conversationId) return;
-
-    void pullMessages();
+    if (!chatOpen || !conversationId) return;
     const interval = window.setInterval(() => void pullMessages(), 3000);
     const unsub = subscribeDealMessages(conversationId, () => void pullMessages());
-
     return () => {
       window.clearInterval(interval);
       unsub();
     };
-  }, [tab, chatOpen, conversationId, pullMessages]);
+  }, [chatOpen, conversationId, pullMessages]);
 
   const mergeMessage = (saved: DealMessageRow, tempId: string) => {
     setMessages((prev) => {
@@ -227,7 +253,7 @@ export default function DealWorkspacePage() {
     await uploadDealDocument(deal.id, file, myCompanyId);
     showToast(`Shared: ${file.name}`, "success");
     await load();
-    setTab("documents");
+    setPartyTab("documents");
   };
 
   const sellerSign = async () => {
@@ -235,9 +261,8 @@ export default function DealWorkspacePage() {
     setSigning(true);
     try {
       await signSellerContract(deal.id, sellerName.trim());
-      showToast("Seller agreement signed. Platform chat channels are open.", "success");
+      showToast("Seller agreement signed. Platform chat is open.", "success");
       await load();
-      setTab("chat");
     } catch {
       showToast("Failed to sign agreement", "error");
     } finally {
@@ -245,41 +270,22 @@ export default function DealWorkspacePage() {
     }
   };
 
-  const advanceStage = async (stage: HiringStage) => {
-    if (!deal || !isAdmin) return;
-    try {
-      await advanceHiringStageAsAdmin(deal.id, stage);
-      showToast(`Stage updated: ${stage}`, "success");
-      await load();
-    } catch {
-      showToast("Failed to update hiring stage", "error");
+  useEffect(() => {
+    if (!loading && isAdmin && deal?.id) {
+      navigate("/admin", { replace: true, state: { dealId: deal.id } });
     }
-  };
+  }, [loading, isAdmin, deal?.id, navigate]);
 
-  const priceSidebar = useMemo(() => {
-    const listPrice = workspace?.listPrice ?? null;
-    const carrierPrice = workspace?.carrierPrice ?? deal?.amount ?? 0;
-    if (isAdmin) {
-      return {
-        label: "Pricing (internal)",
-        value: `${listPrice != null ? fmtRecruitingFee(listPrice) : "—"} list · ${fmtRecruitingFee(carrierPrice)} carrier`
-      };
-    }
-    if (isCarrierParty) {
-      return { label: "Platform recruiting fee", value: fmtRecruitingFee(carrierPrice) };
-    }
-    return { label: "Your listing price", value: listPrice != null ? fmtRecruitingFee(listPrice) : "—" };
-  }, [workspace, deal, isAdmin, isCarrierParty]);
+  const pipelineEvents = useMemo(() => {
+    return (workspace?.events ?? [])
+      .filter((e) => e.stage !== "admin_note" && e.stage !== "document")
+      .slice()
+      .reverse();
+  }, [workspace?.events]);
 
-  const tabs = useMemo(
-    () => [
-      { id: "overview" as Tab, label: "Profile", icon: User },
-      { id: "timeline" as Tab, label: "Timeline", icon: Clock },
-      { id: "chat" as Tab, label: "Platform Chat", icon: MessageSquare, disabled: !chatOpen },
-      { id: "documents" as Tab, label: "Contracts", icon: FileText, disabled: !deal?.buyer_signed_at }
-    ],
-    [chatOpen, deal?.buyer_signed_at]
-  );
+  const activityEvents = useMemo(() => {
+    return (workspace?.events ?? []).filter((e) => e.stage !== "admin_note").slice().reverse();
+  }, [workspace?.events]);
 
   if (loading) {
     return <div className="page active"><p className="t-secondary">Loading deal workspace...</p></div>;
@@ -296,22 +302,68 @@ export default function DealWorkspacePage() {
     );
   }
 
-  return (
-    <div className={`page active deal-workspace-page ${tab === "chat" && chatOpen ? "deal-workspace-page--chat-active" : ""}`}>
-      <div className="page-header inline">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate("/ongoing-deals")}>
-          <ArrowLeft className="icon-sm" /> Ongoing Deals
-        </button>
-        <div>
-          <h2>{fullName(driver)}</h2>
-          <p className="t-secondary">
-            {deal.id} · {isAdmin
-              ? `${deal.companies_buyer?.name} ↔ ${deal.companies_seller?.name} (platform mediated)`
-              : "Coordinated by CDL Exchange platform team"}
-          </p>
-        </div>
-        <span className={`badge ${statusBadgeClass(deal.status)}`} style={{ marginLeft: "auto" }}>{deal.status}</span>
+  if (isAdmin) {
+    return (
+      <div className="page active">
+        <p className="t-secondary">Opening admin console…</p>
       </div>
+    );
+  }
+
+  const scorePct = cdlScorePct(driver, driverCard ?? null);
+  const driverTypeTag = driverCard?.driverType ?? "Driver";
+
+  const chatPanel = chatOpen ? (
+    <MessengerPanel
+      className="messenger-panel--party-rail"
+      title="Chat with Admin"
+      live
+      messages={messages.map((m) => ({
+        id: m.id,
+        body: m.body,
+        isMine: isOwnDealMessage(m, myCompanyId, channelPartyId ?? ""),
+        isSystem: !m.sender_company_id,
+        attachmentName: m.attachment_name,
+        attachmentPath: m.attachment_path,
+        attachmentUrl: m.attachment_url,
+        timeLabel: formatMsgTime(m.created_at)
+      }))}
+      emptyMessage="Message the platform team. An admin will respond and keep you updated."
+      value={chatInput}
+      onChange={setChatInput}
+      onSend={() => void sendChat()}
+      sending={chatSending}
+      onFileSelect={(file) => void shareFile(file)}
+      focusKey={conversationId ?? undefined}
+      messagesEndRef={messagesEndRef}
+    />
+  ) : (
+    <div className="deal-party-chat-locked">
+      <Lock className="icon-sm" />
+      <p className="t-secondary">
+        {isRecruiterParty && needsSellerSign
+          ? "Sign the seller agreement to open platform chat."
+          : "Platform chat opens after the recruiting agreement is signed."}
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="page active deal-workspace-page deal-workspace-page--party">
+      <header className="deal-party-header">
+        <div className="deal-party-header-left">
+          <h2>Deal {deal.id}</h2>
+          <span className={`badge ${statusBadgeClass(deal.status)}`}>{displayStatus(deal.status)}</span>
+        </div>
+        <div className="deal-party-header-actions">
+          <button type="button" className="btn btn-danger btn-sm deal-dispute-btn" onClick={() => openDisputeModal(deal.id)}>
+            Dispute Deal
+          </button>
+          <button type="button" className="deal-party-bell" aria-label="Notifications">
+            <Bell className="icon-sm" />
+          </button>
+        </div>
+      </header>
 
       {needsSellerSign && isSellerParty ? (
         <div className="card seller-contract-banner">
@@ -319,7 +371,7 @@ export default function DealWorkspacePage() {
             <h3>Seller representation agreement required</h3>
             <p className="t-secondary" style={{ marginBottom: 12 }}>
               Buyer signed on {deal.buyer_signed_at ? fmtDate(deal.buyer_signed_at) : "—"} by {deal.buyer_signer_name}.
-              Seller must countersign before messaging and document sharing open.
+              Countersign to open platform chat and document sharing.
             </p>
             <ul className="contract-clauses-compact">
               {SELLER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}
@@ -348,250 +400,255 @@ export default function DealWorkspacePage() {
         </div>
       ) : null}
 
-      <div className="deal-workspace-tabs">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              className={`deal-tab ${tab === t.id ? "active" : ""} ${t.disabled ? "disabled" : ""}`}
-              disabled={t.disabled}
-              onClick={() => setTab(t.id)}
-            >
-              <Icon className="icon-sm" /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className={`deal-workspace-body ${tab === "chat" && chatOpen ? "deal-workspace-body--chat" : ""}`}>
-      {tab === "overview" ? (
-        <div className="detail-layout revealed">
-          <div className="detail-main card">
+      <div className="deal-party-layout">
+        <div className="deal-party-main">
+          <div className="card deal-driver-card">
+            <div className="card-header">
+              <h3><User className="icon-sm" /> Driver Profile</h3>
+            </div>
             <div className="card-body">
-              <div style={{ display: "flex", gap: "var(--s3)", flexWrap: "wrap", alignItems: "center" }}>
-                <ScoreBadge score={driver.score} />
-                {driver.verified ? <VerifiedBadge text="Verified Listing" /> : null}
+              <div className="deal-driver-head">
+                <div>
+                  <h4>{fullName(driver)}</h4>
+                  <div className="deal-driver-tags">
+                    <span className="badge badge-blue">{driver.cdl}</span>
+                    <span className="badge badge-green">{driverTypeTag}</span>
+                    {driver.verified ? <VerifiedBadge text="Verified" /> : null}
+                  </div>
+                </div>
               </div>
-              <div className="info-grid">
-                <div className="info-item"><div className="lbl">Full Name</div><div className="val">{fullName(driver)}</div></div>
-                <div className="info-item"><div className="lbl">Phone</div><div className="val">{driver.phone}</div></div>
-                <div className="info-item"><div className="lbl">Email</div><div className="val">{driver.email}</div></div>
-                <div className="info-item"><div className="lbl">Experience</div><div className="val">{driver.exp} years</div></div>
-                <div className="info-item"><div className="lbl">State</div><div className="val">{driver.state}</div></div>
-                <div className="info-item"><div className="lbl">CDL Class</div><div className="val">{driver.cdl}</div></div>
-                <div className="info-item"><div className="lbl">Equipment</div><div className="val">{driver.equip}</div></div>
-                <div className="info-item"><div className="lbl">Availability</div><div className="val">{fmtDate(driver.avail)}</div></div>
-              </div>
+              <dl className="deal-driver-details">
+                <div><dt>Experience</dt><dd>{driver.exp} Years</dd></div>
+                <div><dt>Trailer Type</dt><dd>{driver.equip}</dd></div>
+                <div><dt>CDL Score</dt><dd><span className="deal-score-pill">{scorePct}%</span></dd></div>
+                <div><dt>{recruitmentFee.label}</dt><dd className="deal-fee-value">{recruitmentFee.value}</dd></div>
+                <div><dt>Location</dt><dd>{driver.state}</dd></div>
+                <div><dt>Availability</dt><dd>{fmtAvailability(driver.avail)}</dd></div>
+              </dl>
               {chatOpen ? (
-                <div style={{ marginTop: "var(--s5)" }}>
-                  <h4 className="t-card" style={{ marginBottom: "var(--s3)" }}>Listing Documents</h4>
-                  <ul className="t-secondary" style={{ paddingLeft: "var(--s5)" }}>{driver.docs.map((doc) => <li key={doc}>{doc}</li>)}</ul>
-                  {driver.notes ? (
+                <div className="deal-driver-extra">
+                  <ScoreBadge score={driver.score} />
+                  {!isRecruiterParty ? (
                     <>
-                      <h4 className="t-card" style={{ margin: "var(--s4) 0 var(--s3)" }}>Seller Notes</h4>
-                      <p className="t-secondary" style={{ background: "var(--bg)", padding: "var(--s4)", borderRadius: "var(--radius-btn)", border: "1px solid var(--border)" }}>{driver.notes}</p>
+                      <div className="deal-driver-contact"><span className="lbl">Phone</span>{driver.phone}</div>
+                      <div className="deal-driver-contact"><span className="lbl">Email</span>{driver.email}</div>
                     </>
                   ) : null}
                 </div>
               ) : (
-                <p className="t-secondary" style={{ marginTop: 16 }}>
-                  Full contact details and documents unlock after both parties sign the recruiting agreement.
+                <p className="t-caption t-secondary deal-driver-lock-note">
+                  Contact details unlock after agreements are signed. All coordination goes through platform admins.
                 </p>
               )}
             </div>
           </div>
-          <div className="detail-sidebar">
-            <div className="card">
-              <div className="card-body">
-                <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase" }}>{priceSidebar.label}</div>
-                <div className="detail-price">{priceSidebar.value}</div>
-                {isAdmin ? (
-                  <p className="t-caption t-secondary" style={{ marginTop: 8 }}>Recruiters see list price only. Carriers see final approved fee only.</p>
-                ) : (
-                  <p className="t-caption t-secondary" style={{ marginTop: 8 }}>All updates are coordinated through platform admins.</p>
-                )}
-                <div className="contract-sign-status" style={{ marginTop: 12, fontSize: 13 }}>
-                  <div>{deal.buyer_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Buyer signed</div>
-                  <div>{deal.seller_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Seller signed</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
-      {tab === "timeline" ? (
-        <div className="card">
-          <div className="card-header" style={{ justifyContent: "space-between" }}>
-            <h3>Hiring Timeline</h3>
-            {chatOpen && isAdmin ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(["screening", "interview", "orientation", "hired", "completed"] as HiringStage[]).map((s) => (
-                  <button key={s} type="button" className="btn btn-ghost btn-sm" onClick={() => void advanceStage(s)}>
-                    → {s}
-                  </button>
-                ))}
-              </div>
-            ) : chatOpen ? (
-              <span className="t-caption t-secondary">Timeline updates are managed by platform admins</span>
-            ) : null}
-          </div>
-          <div className="card-body">
-            <div className="timeline deal-timeline">
-              {HIRING_STAGES.map((stage, i) => {
-                const done = i <= currentStageIdx && chatOpen;
-                const current = i === currentStageIdx && chatOpen;
-                return (
-                  <div key={stage.key} className={`timeline-item ${done ? "done" : ""} ${current ? "current" : ""}`}>
-                    <strong>{stage.label}</strong><br />
-                    <span className="t-secondary">{stage.desc}</span>
-                  </div>
-                );
-              })}
-            </div>
-            {workspace.events.length > 0 ? (
-              <div className="deal-events-log">
-                <h4 style={{ margin: "20px 0 10px" }}>Activity Log</h4>
-                {workspace.events.map((e) => (
-                  <div key={e.id} className="deal-event-row">
-                    <span className="t-caption t-secondary">{fmtDate(e.created_at)}</span>
-                    <strong>{e.title}</strong>
-                    {e.description ? <span className="t-secondary"> — {e.description}</span> : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {tab === "chat" && chatOpen ? (
-        <>
-          {isAdmin ? (
-            <div className="admin-chat-lanes" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <button type="button" className={`btn btn-sm ${adminChatLane === "carrier" ? "btn-primary" : "btn-secondary"}`} onClick={() => setAdminChatLane("carrier")}>Carrier channel</button>
-              <button type="button" className={`btn btn-sm ${adminChatLane === "recruiter" ? "btn-primary" : "btn-secondary"}`} onClick={() => setAdminChatLane("recruiter")}>Recruiter channel</button>
-            </div>
-          ) : null}
-        <MessengerPanel
-          className="messenger-panel--docked"
-          title={isAdmin
-            ? adminChatLane === "carrier"
-              ? `Carrier channel — ${deal.companies_buyer?.name ?? "Carrier"}`
-              : `Recruiter channel — ${deal.companies_seller?.name ?? "Recruiter"}`
-            : "Platform coordinator"}
-          live
-          messages={messages.map((m) => ({
-            id: m.id,
-            body: m.body,
-            isMine: isOwnDealMessage(m, myCompanyId, channelPartyId ?? ""),
-            isSystem: !m.sender_company_id,
-            attachmentName: m.attachment_name,
-            attachmentPath: m.attachment_path,
-            attachmentUrl: m.attachment_url,
-            timeLabel: formatMsgTime(m.created_at)
-          }))}
-          emptyMessage="Message the platform team. An admin will respond and keep you updated."
-          value={chatInput}
-          onChange={setChatInput}
-          onSend={() => void sendChat()}
-          sending={chatSending}
-          onFileSelect={(file) => void shareFile(file)}
-          focusKey={conversationId ?? undefined}
-          messagesEndRef={messagesEndRef}
-        />
-        </>
-      ) : null}
-
-      {tab === "documents" && deal?.buyer_signed_at ? (
-        <div className="card">
-          <div className="card-header" style={{ justifyContent: "space-between" }}>
-            <h3>Contracts & Documents</h3>
-            {chatOpen ? (
-              <>
-                <input
-                  ref={docFileInputRef}
-                  type="file"
-                  className="messenger-file-input"
-                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (file) void attachDoc(file);
-                  }}
-                />
+          <div className="card deal-party-tabs-card">
+            <div className="deal-party-tabs">
+              {([
+                { id: "pipeline" as PartyTab, label: "Hiring Pipeline" },
+                { id: "contracts" as PartyTab, label: "Contracts" },
+                { id: "documents" as PartyTab, label: "Documents" },
+                { id: "activity" as PartyTab, label: "Activity" }
+              ]).map((t) => (
                 <button
+                  key={t.id}
                   type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => docFileInputRef.current?.click()}
+                  className={`deal-party-tab ${partyTab === t.id ? "active" : ""}`}
+                  onClick={() => setPartyTab(t.id)}
                 >
-                  Upload Document
+                  {t.label}
                 </button>
-              </>
-            ) : null}
-          </div>
-          <div className="card-body">
-            <div className="deal-contract-summary" style={{ marginBottom: 20, fontSize: 13, lineHeight: 1.8 }}>
-              <h4 className="t-card" style={{ marginBottom: 8 }}>Recruiting agreements</h4>
-              <p>
-                <strong>Buyer:</strong> {deal.companies_buyer?.name ?? "—"}
-                {deal.buyer_signed_at
-                  ? ` — signed by ${deal.buyer_signer_name ?? "—"} on ${fmtDate(deal.buyer_signed_at)}`
-                  : " — pending signature"}
-              </p>
-              <p>
-                <strong>Seller:</strong> {deal.companies_seller?.name ?? "—"}
-                {deal.seller_signed_at
-                  ? ` — signed by ${deal.seller_signer_name ?? "—"} on ${fmtDate(deal.seller_signed_at)}`
-                  : " — pending signature"}
-              </p>
-              <p className="t-secondary">
-                Deal {deal.id}
-                {isCarrierParty ? ` · Platform recruiting fee ${fmtRecruitingFee(workspace?.carrierPrice ?? deal.amount)}` : ""}
-                {isRecruiterParty && workspace?.listPrice != null ? ` · Your listing price ${fmtRecruitingFee(workspace.listPrice)}` : ""}
-                {isAdmin ? ` · List ${workspace?.listPrice != null ? fmtRecruitingFee(workspace.listPrice) : "—"} · Carrier ${fmtRecruitingFee(workspace?.carrierPrice ?? deal.amount)}` : ""}
-              </p>
+              ))}
             </div>
 
-            {chatOpen ? (
-              workspace.documents.length === 0 ? (
-                <p className="t-secondary">No additional documents shared yet.</p>
-              ) : (
-                <ul className="deal-doc-list">
-                  {workspace.documents.map((d) => (
-                    <li key={d.id}>
-                      <FileText className="icon-sm" />
-                      {d.download_url ? (
-                        <a href={d.download_url} target="_blank" rel="noopener noreferrer" download={d.file_name}>
-                          {d.file_name}
-                        </a>
-                      ) : (
-                        <span>{d.file_name}</span>
-                      )}
-                      <span className="t-caption t-secondary">{fmtDate(d.created_at)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : (
-              <p className="t-secondary">Shared documents unlock after both parties sign the recruiting agreement.</p>
-            )}
+            <div className="card-body deal-party-tab-body">
+              {partyTab === "pipeline" ? (
+                <>
+                  <div className="deal-pipeline-stepper">
+                    {HIRING_STAGES.map((stage, i) => {
+                      const done = i < currentStageIdx || (i === currentStageIdx && deal.hiring_stage === "completed");
+                      const current = i === currentStageIdx && deal.hiring_stage !== "completed";
+                      const event = workspace.events.find((e) => e.stage === stage.key);
+                      return (
+                        <div key={stage.key} className={`deal-pipeline-step ${done ? "done" : ""} ${current ? "current" : ""}`}>
+                          <div className="deal-pipeline-dot">
+                            {done ? <CheckCircle2 className="icon-sm" /> : i + 1}
+                          </div>
+                          <strong>{stage.label}</strong>
+                          {current ? <span className="deal-pipeline-current">Current</span> : null}
+                          {event ? <span className="t-caption">{fmtDate(event.created_at)}</span> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="deal-pipeline-details">
+                    <div>
+                      <h4>Pipeline details</h4>
+                      <ul className="deal-pipeline-list">
+                        {pipelineEvents.length === 0 ? (
+                          <li className="t-secondary">No milestones recorded yet.</li>
+                        ) : (
+                          pipelineEvents.slice(0, 6).map((e) => (
+                            <li key={e.id}>
+                              <strong>{e.title}</strong>
+                              <span>{fmtDate(e.created_at)}</span>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                      <p className="deal-next-step">
+                        <span className="lbl">Next step</span>
+                        {nextStepLabel(deal.hiring_stage, Boolean(chatOpen))}
+                      </p>
+                    </div>
+                    <div className="deal-help-box">
+                      <h4>Need help?</h4>
+                      <p className="t-secondary">Platform admins manage hiring stages and coordinate both parties.</p>
+                      <button type="button" className="btn btn-danger btn-sm" onClick={() => openDisputeModal(deal.id)}>
+                        <AlertTriangle className="icon-sm" /> Dispute Deal
+                      </button>
+                    </div>
+                  </div>
+                  <p className="t-caption t-secondary deal-timeline-note">
+                    Timeline updates are managed by platform admins only.
+                  </p>
+                </>
+              ) : null}
 
-            <div style={{ marginTop: 20 }}>
-              <h4 className="t-card" style={{ marginBottom: 8 }}>Buyer agreement clauses</h4>
-              <ul className="contract-clauses-compact">{BUYER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
+              {partyTab === "contracts" ? (
+                <div className="deal-contracts-panel">
+                  <h4>Recruiting agreements</h4>
+                  <p>
+                    <strong>Buyer:</strong> {deal.companies_buyer?.name ?? "—"}
+                    {deal.buyer_signed_at
+                      ? ` — signed by ${deal.buyer_signer_name ?? "—"} on ${fmtDate(deal.buyer_signed_at)}`
+                      : " — pending signature"}
+                  </p>
+                  <p>
+                    <strong>Seller:</strong> {deal.companies_seller?.name ?? "—"}
+                    {deal.seller_signed_at
+                      ? ` — signed by ${deal.seller_signer_name ?? "—"} on ${fmtDate(deal.seller_signed_at)}`
+                      : " — pending signature"}
+                  </p>
+                  <p className="deal-contract-fee">
+                    <strong>{recruitmentFee.label}:</strong> {recruitmentFee.value}
+                  </p>
+                  <div className="contract-sign-status">
+                    <div>{deal.buyer_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Buyer signed</div>
+                    <div>{deal.seller_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Seller signed</div>
+                  </div>
+                  <h4 style={{ marginTop: 20 }}>Buyer agreement clauses</h4>
+                  <ul className="contract-clauses-compact">{BUYER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
+                  {deal.seller_signed_at ? (
+                    <>
+                      <h4 style={{ marginTop: 16 }}>Seller agreement clauses</h4>
+                      <ul className="contract-clauses-compact">{SELLER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {partyTab === "documents" ? (
+                <>
+                  <div className="deal-docs-toolbar">
+                    <h4>Shared documents</h4>
+                    {chatOpen ? (
+                      <>
+                        <input
+                          ref={docFileInputRef}
+                          type="file"
+                          className="messenger-file-input"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (file) void attachDoc(file);
+                          }}
+                        />
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => docFileInputRef.current?.click()}>
+                          Upload Document
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                  {chatOpen ? (
+                    workspace.documents.length === 0 ? (
+                      <p className="t-secondary">No documents shared yet.</p>
+                    ) : (
+                      <ul className="deal-doc-list">
+                        {workspace.documents.map((d) => (
+                          <li key={d.id}>
+                            <FileText className="icon-sm" />
+                            {d.download_url ? (
+                              <a href={d.download_url} target="_blank" rel="noopener noreferrer" download={d.file_name}>
+                                {d.file_name}
+                              </a>
+                            ) : (
+                              <span>{d.file_name}</span>
+                            )}
+                            <span className="t-caption t-secondary">{fmtDate(d.created_at)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  ) : (
+                    <p className="t-secondary">Documents unlock after both parties sign the recruiting agreement.</p>
+                  )}
+                  {chatOpen && driver.docs.length > 0 ? (
+                    <>
+                      <h4 style={{ marginTop: 20 }}>Listing documents</h4>
+                      <ul className="t-secondary" style={{ paddingLeft: 20 }}>{driver.docs.map((doc) => <li key={doc}>{doc}</li>)}</ul>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+
+              {partyTab === "activity" ? (
+                <div className="admin-activity-feed">
+                  {activityEvents.length === 0 ? (
+                    <p className="t-secondary">No activity yet.</p>
+                  ) : (
+                    activityEvents.map((e) => (
+                      <div key={e.id} className="admin-activity-item">
+                        <Clock className="icon-sm" />
+                        <div>
+                          <strong>{e.title}</strong>
+                          {e.description ? <p className="t-secondary">{e.description}</p> : null}
+                          <span className="t-caption">{fmtDate(e.created_at)}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : null}
             </div>
-            {deal.seller_signed_at ? (
-              <div style={{ marginTop: 16 }}>
-                <h4 className="t-card" style={{ marginBottom: 8 }}>Seller agreement clauses</h4>
-                <ul className="contract-clauses-compact">{SELLER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
-              </div>
-            ) : null}
           </div>
         </div>
-      ) : null}
+
+        <aside className="deal-party-rail scroll-y">
+          <div className="card deal-party-chat-card">
+            <div className="deal-party-chat-head">
+              <h3>Chat with Admin</h3>
+              <span className="deal-admin-online"><span className="deal-online-dot" /> Platform team</span>
+            </div>
+            {chatPanel}
+          </div>
+
+          <div className="card deal-party-summary">
+            <div className="card-header"><h3>Deal Summary</h3></div>
+            <div className="card-body">
+              <dl className="deal-summary-list">
+                <div><dt>Deal ID</dt><dd>{deal.id}</dd></div>
+                <div><dt>Driver</dt><dd>{fullName(driver)}</dd></div>
+                <div><dt>{recruitmentFee.label}</dt><dd>{recruitmentFee.value}</dd></div>
+                <div><dt>Status</dt><dd><span className={`badge ${statusBadgeClass(deal.status)}`}>{displayStatus(deal.status)}</span></dd></div>
+                <div><dt>Stage</dt><dd>{HIRING_STAGES[currentStageIdx]?.label ?? deal.hiring_stage}</dd></div>
+                <div><dt>Created</dt><dd>{fmtDate(deal.created_at)}</dd></div>
+              </dl>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

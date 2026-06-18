@@ -60,7 +60,7 @@ interface AppContextValue {
   reserveDriver: (id: number) => Promise<void>;
   openBuyModal: (id: number, onComplete?: () => void) => void;
   openReserveModal: (id: number, onComplete?: () => void) => void;
-  openDisputeModal: () => void;
+  openDisputeModal: (dealId?: string) => void;
   isPurchased: (id: number) => boolean;
   isReserved: (id: number) => boolean;
 }
@@ -311,9 +311,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [closeModal, loadDriverCard, openModal, reserveDriver, showToast]
   );
 
-  const openDisputeModal = useCallback(() => {
+  const openDisputeModal = useCallback((presetDealId?: string) => {
     void fetchDealsForSelect().then((deals) => {
-      let dealId = deals[0]?.id ?? "";
+      let dealId = presetDealId && deals.some((d) => d.id === presetDealId)
+        ? presetDealId
+        : deals[0]?.id ?? "";
       let reason = "Invalid phone";
       let description = "";
       openModal(
@@ -322,7 +324,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           <div className="form-group">
             <label>Deal ID</label>
             <select defaultValue={dealId} onChange={(e) => { dealId = e.target.value; }}>
-              {deals.length === 0 ? <option value="">No eligible deals</option> : deals.map((d) => <option key={d.id} value={d.id}>{d.id}</option>)}
+              {deals.length === 0 ? <option value="">No eligible deals</option> : deals.map((d) => (
+                <option key={d.id} value={d.id}>{d.id}</option>
+              ))}
             </select>
           </div>
           <div className="form-group">

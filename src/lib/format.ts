@@ -14,6 +14,18 @@ export function fmtDate(d: string): string {
   });
 }
 
+export function fmtRelativeUpdated(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "Updated just now";
+  if (mins < 60) return `Updated ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Updated ${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `Updated ${days}d ago`;
+  return `Updated ${fmtDate(iso)}`;
+}
+
 export function fmtPostedAt(iso: string): string {
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
