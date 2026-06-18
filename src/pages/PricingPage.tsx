@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext";
+import { canActAsCarrier, isPlatformStaff } from "../lib/account-capabilities";
 import { CARRIER_PLANS } from "../lib/carrier-plans";
 import { fmtPrice } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -188,8 +189,9 @@ function CarrierPlansPricing({
 
 export default function PricingPage() {
   const { showToast, sessionUser } = useApp();
-  const isCarrier = sessionUser?.accountType === "carrier";
-  const currentPlanId = sessionUser?.selectedPlan ?? "free";
+  const isCarrier = canActAsCarrier(sessionUser);
+  const isStaff = isPlatformStaff(sessionUser);
+  const currentPlanId = sessionUser?.selectedPlan ?? (isStaff ? "pro_fleet" : "free");
 
   return (
     <div className="page active">
@@ -197,7 +199,9 @@ export default function PricingPage() {
         <h2>Pricing & Billing</h2>
         <p>
           {isCarrier
-            ? "Manage your carrier subscription and view billing history."
+            ? isStaff
+              ? "Platform operations account — full marketplace access included."
+              : "Manage your carrier subscription and view billing history."
             : "Listing upgrades and billing for your recruiter account."}
         </p>
       </div>

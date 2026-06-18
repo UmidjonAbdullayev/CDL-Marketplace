@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from "react-router-dom";
+import { canAccessAdminPanel } from "../../lib/account-capabilities";
 import { useApp } from "../../context/AppContext";
 
 export function AdminGuard() {
@@ -8,7 +9,7 @@ export function AdminGuard() {
     return <Navigate to="/register" replace />;
   }
 
-  if (!sessionUser?.isAdmin && sessionUser?.adminRole === "none") {
+  if (!canAccessAdminPanel(sessionUser)) {
     return <Navigate to="/dashboard" replace />;
   }
 

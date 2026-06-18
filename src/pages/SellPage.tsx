@@ -5,8 +5,9 @@ import { useApp } from "../context/AppContext";
 import { PageHeader } from "../lib/badges";
 import { fmtPrice } from "../lib/format";
 import { DRIVER_TYPES } from "../lib/driver-types";
+import { US_STATES } from "../lib/us-states";
 import { invalidateDataViews } from "../lib/dataInvalidation";
-import { computeListingPricing, maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
+import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { createListing } from "../services/marketplace";
 import type { ScoreFlag } from "../types";
 
@@ -35,8 +36,6 @@ export default function SellPage() {
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState(350);
   const priceCap = useMemo(() => maxRecruiterPrice(driverType), [driverType]);
-  const pricing = useMemo(() => computeListingPricing(Math.min(price, priceCap), 0), [price, priceCap]);
-  const payout = useMemo(() => fmtPrice(pricing.netPayout), [pricing.netPayout]);
 
   const publish = async () => {
     const capError = validateRecruiterListPrice(price, driverType);
@@ -102,7 +101,7 @@ export default function SellPage() {
           <div className="form-row">
             <div className="form-group"><label>State *</label>
               <select value={state} onChange={(e) => setState(e.target.value)}>
-                {["TX", "CA", "FL", "OH", "GA", "IN", "IL", "PA", "NC", "WA", "AZ", "TN"].map((s) => <option key={s}>{s}</option>)}
+                {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
               </select>
             </div>
             <div className="form-group"><label>Phone *</label><input value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
@@ -181,18 +180,13 @@ export default function SellPage() {
             </div>
             <div className="form-group"><label>Listing Duration</label><select><option>30 days</option><option>60 days</option><option>90 days</option></select></div>
           </div>
-          <div style={{ marginTop: 12, padding: 12, background: "var(--gray-50)", borderRadius: 8, fontSize: 13 }}>
-            Platform fee: 15% commission on completed sale. You receive <strong id="sellerPayout">{payout}</strong> after sale.
-            Carriers see a separate admin-approved recruiting fee — not your list price.
-          </div>
         </div>
         <div className={`form-step ${step === 7 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 7: Review & Publish</h3>
           <div style={{ fontSize: 13, lineHeight: 2, background: "var(--gray-50)", padding: 20, borderRadius: 8 }}>
             <strong>Driver:</strong> {first} {last}<br />
             <strong>Driver Type:</strong> {driverType}<br />
-            <strong>List Price:</strong> {fmtPrice(price)}<br />
-            <strong>Your Payout:</strong> {fmtPrice(pricing.netPayout)} (after 15% fee)<br />
+            <strong>Listing Price:</strong> {fmtPrice(price)}<br />
             <strong>Consent:</strong> Confirmed<br />
             <strong>Status:</strong> Pending admin approval
           </div>

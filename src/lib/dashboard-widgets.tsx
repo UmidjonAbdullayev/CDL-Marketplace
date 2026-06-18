@@ -101,13 +101,11 @@ export function ActivityFeedItem({
 export function CategoryRow({
   name,
   listings,
-  avg,
   pct,
   cls
 }: {
   name: string;
   listings: string;
-  avg: string;
   pct: number;
   cls: string;
 }) {
@@ -116,7 +114,6 @@ export function CategoryRow({
       <div className="category-name">{name}</div>
       <div className="category-meta">
         <span>{listings} listings</span>
-        <span>{avg} avg</span>
       </div>
       <div className="category-bar-wrap">
         <div className="category-bar"><span className={cls} style={{ width: `${pct}%` }} /></div>

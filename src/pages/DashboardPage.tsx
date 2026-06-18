@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { SPARK_DATA } from "../data/dashboard";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
-import { fmtPrice } from "../lib/format";
+import { fmtPrice, stripPricesFromText } from "../lib/format";
 import {
   ActionListItem,
   ActivityFeedItem,
@@ -164,9 +164,9 @@ export default function DashboardPage() {
             <SnapshotMetric
               iconCls="purple"
               icon={<Users />}
-              label="Available Drivers"
-              value={String(dashStats.available)}
-              subtext="↑ 14% vs last month"
+              label="Done Deals"
+              value={String(dealStats.completed)}
+              subtext="Completed engagements"
               subCls="up"
             />
             <SnapshotMetric
@@ -316,7 +316,7 @@ export default function DashboardPage() {
                     key={a.id}
                     type={a.activity_type as "sale" | "list" | "deal" | "user"}
                     title={a.title}
-                    desc={a.description}
+                    desc={stripPricesFromText(a.description)}
                     time={timeAgo(a.created_at)}
                     status={a.status_label}
                     statusCls={a.status_class}
@@ -332,9 +332,9 @@ export default function DashboardPage() {
           <div className="card-body card-body--flush dash-card-trio-body">
             <div className="dash-card-trio-scroll">
               <div className="category-list">
-                <div className="category-head"><span>Category</span><span>Volume</span><span>Sell Rate</span></div>
+                <div className="category-head"><span>Category</span><span>Volume</span><span>Share</span></div>
                 {categories.map((c) => (
-                  <CategoryRow key={c.id} name={c.name} listings={String(c.listings_count)} avg={fmtPrice(c.avg_price)} pct={c.sell_rate} cls={c.rate_class as "high" | "mid" | "low"} />
+                  <CategoryRow key={c.id} name={c.name} listings={String(c.listings_count)} pct={c.sell_rate} cls={c.rate_class as "high" | "mid" | "low"} />
                 ))}
               </div>
             </div>

@@ -1,12 +1,15 @@
 import { Bell, Menu, MessageCircle, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
+import { canAccessAdminPanel } from "../../lib/account-capabilities";
+import { shouldLaunchMarketplaceSearch } from "../../lib/search-navigation";
 import { NotificationsPanel } from "./NotificationsPanel";
 
 export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { searchQuery, setSearchQuery, showToast, sessionUser, signOut } = useApp();
   const { badges, notifications, dismissAllNotifications } = useExchangeData();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -41,6 +44,19 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const displayName = sessionUser?.name ?? "Guest";
   const displayPlan = sessionUser?.plan ?? "";
 
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (shouldLaunchMarketplaceSearch(location.pathname, value)) {
+      navigate("/marketplace");
+    }
+  };
+
+  const openAdminPanel = () => {
+    setMenuOpen(false);
+    setSearchQuery("");
+    navigate("/admin");
+  };
+
   return (
     <header className="topbar">
       <button className="menu-toggle" id="menuToggle" onClick={onToggleSidebar} aria-label="Open menu">
@@ -51,12 +67,19 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           <span className="search-icon"><Search style={{ width: 18, height: 18 }} /></span>
           <input
             ref={inputRef}
-            type="text"
+            type="search"
             id="globalSearch"
+            name="driver-marketplace-search"
             className="search-input"
             placeholder="Search drivers, deals, listings..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-1p-ignore
+            data-lpignore="true"
+            onChange={(e) => handleSearchChange(e.target.value)}
           />
           <span className="search-kbd">⌘ K</span>
         </div>
@@ -105,8 +128,8 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             <button onClick={() => navigate("/profile")}>View Profile</button>
             <button onClick={() => navigate("/pricing")}>Billing</button>
             <button onClick={() => navigate("/settings")}>Settings</button>
-            {sessionUser?.isAdmin ? (
-              <button onClick={() => navigate("/admin")}>Admin Panel</button>
+            {canAccessAdminPanel(sessionUser) ? (
+              <button type="button" onClick={openAdminPanel}>Admin Panel</button>
             ) : null}
             <div className="divider" />
             <button type="button" onClick={handleSignOut}>Sign Out</button>

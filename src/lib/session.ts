@@ -47,6 +47,11 @@ function accountDisplayName(account: RegistrationAccount): string {
   return (p as { fullName: string }).fullName;
 }
 
+function isPlatformStaffPlan(account: RegistrationAccount): boolean {
+  const role = account.admin_role ?? "none";
+  return Boolean(account.is_admin || role === "manager" || role === "admin");
+}
+
 export function sessionFromAccount(
   account: RegistrationAccount,
   company?: { wallet_balance?: number | null } | null
@@ -59,7 +64,7 @@ export function sessionFromAccount(
   return {
     id: account.id,
     name,
-    plan,
+    plan: isPlatformStaffPlan(account) ? "Platform Operations" : plan,
     initials: initialsFromName(name),
     email: account.email,
     accountType: account.account_type,
@@ -91,7 +96,7 @@ export function clearSession(): void {
 }
 
 export function initSession(): SessionUser | null {
-  const user = readSession();
+  let user = readSession();
   if (!user) return null;
   // Drop legacy sessions from older builds missing per-user company scope
   if (!user.email || !user.companyId) {
@@ -99,10 +104,13 @@ export function initSession(): SessionUser | null {
     return null;
   }
   if (user.accountType === "carrier" && user.selectedPlan === undefined) {
-    return { ...user, selectedPlan: "free" };
+    user = { ...user, selectedPlan: "free" };
   }
   if (user.adminRole === undefined) {
-    return { ...user, adminRole: user.isAdmin ? "admin" : "none" };
+    user = { ...user, adminRole: user.isAdmin ? "admin" : "none" };
+  }
+  if (user.adminRole === "manager" || user.adminRole === "admin") {
+    user = { ...user, isAdmin: true };
   }
   return user;
 }

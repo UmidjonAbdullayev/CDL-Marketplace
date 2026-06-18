@@ -65,24 +65,26 @@ export async function createPlatformAdmin(
   const password_hash = await hashPassword(password);
   const normalized = email.trim().toLowerCase();
   const { error } = await supabase.from("registration_accounts").insert({
-    account_type: "agency",
+    account_type: "carrier",
     status: "active",
     email: normalized,
     password_hash,
+    selected_plan: "pro_fleet",
     profile_data: {
-      agencyName: name,
+      companyName: name,
       companyEmail: normalized,
       phone: "",
       website: "",
-      contactPersonName: name,
-      contactPersonRole: "Platform Admin",
+      mcNumber: "PLATFORM",
+      dotNumber: "",
       specialization: "Platform Operations",
       serviceArea: "National",
       yearsInBusiness: "",
       address: "",
       city: "",
       state: "",
-      zip: ""
+      zip: "",
+      about: "CDL Exchange platform administrator"
     },
     policy_accepted: true,
     policy_accepted_at: new Date().toISOString(),
@@ -215,4 +217,72 @@ export function adminDisplayName(admin: PlatformAdmin): string {
 
 export function unwrapCompanyName(companies: PendingListingApproval["companies"]): string {
   return unwrapRelation(companies)?.name ?? "—";
+}
+
+export type PlatformOngoingDeal = {
+  id: string;
+  listing_id: number | null;
+  amount: number;
+  status: string;
+  hiring_stage: string;
+  buyer_name: string;
+  seller_name: string;
+  driver_label: string;
+  assigned_admin_id: string | null;
+  assigned_admin_name: string | null;
+  updated_at: string;
+};
+
+export async function fetchPlatformOngoingDeals(
+  adminId: string,
+  adminRole: AdminRole
+): Promise<PlatformOngoingDeal[]> {
+  if (!supabase) return [];
+
+  const { data: deals, error } = await supabase
+    .from("deals")
+    .select("id, listing_id, amount, status, hiring_stage, buyer_company_id, seller_company_id, updated_at")
+    .not("status", "eq", "Completed")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  if (!deals?.length) return [];
+
+  const listingIds = deals.map((d) => d.listing_id).filter((id): id is number => id != null);
+  const companyIds = [...new Set(deals.flatMap((d) => [d.buyer_company_id, d.seller_company_id]))];
+
+  const [{ data: companies }, { data: listings }, admins] = await Promise.all([
+    supabase.from("companies").select("id, name").in("id", companyIds),
+    listingIds.length
+      ? supabase.from("driver_listings").select("id, first_name, last_name, assigned_admin_id").in("id", listingIds)
+      : Promise.resolve({ data: [] as { id: number; first_name: string; last_name: string; assigned_admin_id: string | null }[] }),
+    fetchPlatformAdmins()
+  ]);
+
+  const companyMap = new Map((companies ?? []).map((c) => [c.id, c.name]));
+  const listingMap = new Map((listings ?? []).map((l) => [l.id, l]));
+  const adminMap = new Map(admins.map((a) => [a.id, a.name]));
+
+  return deals
+    .map((d) => {
+      const listing = d.listing_id ? listingMap.get(d.listing_id) : null;
+      const assignedId = listing?.assigned_admin_id ?? null;
+      return {
+        id: d.id,
+        listing_id: d.listing_id,
+        amount: d.amount,
+        status: d.status,
+        hiring_stage: d.hiring_stage,
+        buyer_name: companyMap.get(d.buyer_company_id) ?? "—",
+        seller_name: companyMap.get(d.seller_company_id) ?? "—",
+        driver_label: listing ? `${listing.first_name} ${listing.last_name.charAt(0)}.` : "—",
+        assigned_admin_id: assignedId,
+        assigned_admin_name: assignedId ? adminMap.get(assignedId) ?? "—" : "Unassigned",
+        updated_at: d.updated_at
+      };
+    })
+    .filter((row) => adminRole === "manager" || row.assigned_admin_id === adminId);
+}
+
+export async function assignDealListingAdmin(listingId: number, adminId: string | null): Promise<void> {
+  return assignListingToAdmin(listingId, adminId);
 }

@@ -7,16 +7,23 @@ import { ToastContainer } from "./ToastContainer";
 import { StickyUpgradeBanner } from "./StickyUpgradeBanner";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
+import { shouldLaunchMarketplaceSearch } from "../../lib/search-navigation";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { debouncedSearch, isSignedIn } = useApp();
+  const { debouncedSearch, isSignedIn, setSearchQuery } = useApp();
   const { appLoading } = useExchangeData();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    if (location.pathname !== "/marketplace" && debouncedSearch.length > 2) {
+    if (location.pathname === "/admin") {
+      setSearchQuery("");
+    }
+  }, [location.pathname, setSearchQuery]);
+
+  useEffect(() => {
+    if (shouldLaunchMarketplaceSearch(location.pathname, debouncedSearch)) {
       navigate("/marketplace");
     }
   }, [debouncedSearch, location.pathname, navigate]);

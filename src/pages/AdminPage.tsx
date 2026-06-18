@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { AdminRegistrationReview } from "../components/registration/AdminRegistrationReview";
+import { AdminOngoingDealsPanel } from "../components/admin/AdminOngoingDealsPanel";
 import { AdminTeamPanel } from "../components/admin/AdminTeamPanel";
 import { ListingApprovalPanel } from "../components/admin/ListingApprovalPanel";
 import { PageHeader } from "../lib/badges";
@@ -30,6 +31,7 @@ export default function AdminPage() {
 
       <div className="tabs">
         <button type="button" className={`tab ${tab === "approvals" ? "active" : ""}`} onClick={() => setTab("approvals")}>Listing Cases</button>
+        <button type="button" className={`tab ${tab === "deals" ? "active" : ""}`} onClick={() => setTab("deals")}>Ongoing Deals</button>
         <button type="button" className={`tab ${tab === "registrations" ? "active" : ""}`} onClick={() => setTab("registrations")}>Registrations</button>
         {isManager ? (
           <button type="button" className={`tab ${tab === "team" ? "active" : ""}`} onClick={() => setTab("team")}>Admin Team</button>
@@ -39,6 +41,9 @@ export default function AdminPage() {
 
       <div className={`tab-panel ${tab === "approvals" ? "active" : ""}`}>
         <ListingApprovalPanel />
+      </div>
+      <div className={`tab-panel ${tab === "deals" ? "active" : ""}`}>
+        <AdminOngoingDealsPanel />
       </div>
       <div className={`tab-panel ${tab === "registrations" ? "active" : ""}`}>
         <AdminRegistrationReview />

@@ -12,7 +12,7 @@ import { useLocation } from "react-router-dom";
 import { useApp } from "./AppContext";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { registerDataInvalidation } from "../lib/dataInvalidation";
-import { marketplaceViewerFromAccountType } from "../lib/listing-pricing";
+import { marketplaceViewerForUser } from "../lib/account-capabilities";
 import { postedWithinSince } from "../lib/driver-types";
 import { fmtPrice } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -287,8 +287,8 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   const debouncedSearch = useDebouncedValue(searchQuery, 100);
   const effectiveSearch = debouncedSearch || appDebouncedSearch;
   const marketplaceViewer = useMemo(
-    () => marketplaceViewerFromAccountType(sessionUser?.accountType),
-    [sessionUser?.accountType]
+    () => marketplaceViewerForUser(sessionUser),
+    [sessionUser]
   );
 
   const [appLoading, setAppLoading] = useState(isSupabaseConfigured);
@@ -433,7 +433,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     try {
       const [hot, dash, dealStats, openDisputes, activities, categories, upcomingActions, sellers, trending] =
         await Promise.all([
-          fetchHotListings(),
+          fetchHotListings(marketplaceViewer),
           fetchDashboardStats(),
           fetchDealStats(dashboardPeriod),
           fetchOpenDisputeCount(),
@@ -461,7 +461,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     } finally {
       setDashboardLoading(false);
     }
-  }, [dashboard.loadedAt, dashboardPeriod]);
+  }, [dashboard.loadedAt, dashboardPeriod, marketplaceViewer]);
 
   const refreshMarketplace = useCallback(async (force = false) => {
     const queryChanged = marketplaceQueryKeyRef.current !== marketplaceQueryKey;
@@ -653,21 +653,20 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     if (mode === "initial" && listingRows.length === 0) setListingsLoading(true);
     else setListingsRefreshing(true);
 
-    const statusForTab = listingsTab === "active" ? "active" : listingsTab === "sold" ? "sold" : listingsTab === "expired" ? "expired" : undefined;
+    const tab = (["active", "reserved", "sold", "expired"].includes(listingsTab)
+      ? listingsTab
+      : "active") as import("../services/marketplace").SellerListingsTab;
 
     try {
-      const [listings, counts, res] = await Promise.all([
-        listingsTab === "reserved"
-          ? Promise.resolve({ items: [], total: 0, page: listingsPage, pageSize: DEFAULT_PAGE_SIZE, totalPages: 1 })
-          : fetchSellerListingsPage(statusForTab, { page: listingsPage, pageSize: DEFAULT_PAGE_SIZE }),
-        fetchSellerListingCounts(),
-        listingsTab === "reserved" ? fetchSellerReservations() : Promise.resolve(reservations)
+      const [listings, counts] = await Promise.all([
+        fetchSellerListingsPage(tab, { page: listingsPage, pageSize: DEFAULT_PAGE_SIZE }),
+        fetchSellerListingCounts()
       ]);
       setListingRows(listings.items);
-      setListingsTotal(listingsTab === "reserved" ? res.length : listings.total);
-      setListingsTotalPages(listingsTab === "reserved" ? 1 : listings.totalPages);
+      setListingsTotal(listings.total);
+      setListingsTotalPages(listings.totalPages);
       setListingCounts(counts);
-      if (listingsTab === "reserved") setReservations(res);
+      setReservations([]);
       setListingsLoadedAt(Date.now());
       listingsQueryKeyRef.current = listingsQueryKey;
     } catch (err) {
@@ -676,7 +675,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
       setListingsLoading(false);
       setListingsRefreshing(false);
     }
-  }, [listingsTab, listingsPage, listingsQueryKey, listingRows.length, listingsLoadedAt, reservations]);
+  }, [listingsTab, listingsPage, listingsQueryKey, listingRows.length, listingsLoadedAt]);
 
   const refreshAdmin = useCallback(async (force = false) => {
     const mode = force ? "background" : refreshMode(adminLoadedAt);

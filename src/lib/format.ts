@@ -42,3 +42,14 @@ export function maskName(driver: NameLike): string {
 export function driverInitials(driver: NameLike): string {
   return `${driver.first[0]}${driver.last[0]}`.toUpperCase();
 }
+
+/** Remove dollar amounts from activity descriptions shown on the dashboard. */
+export function stripPricesFromText(text: string): string {
+  return text
+    .replace(/\$\d[\d,]*/g, "")
+    .replace(/\s*·\s*·/g, " · ")
+    .replace(/\s*·\s*recruiting fee\s*/gi, " · ")
+    .replace(/\s*·\s*$/g, "")
+    .replace(/^\s*·\s*/g, "")
+    .trim();
+}

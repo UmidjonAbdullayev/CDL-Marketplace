@@ -7,9 +7,12 @@ import {
   initSession,
   clearSession,
   writeSession,
+  sessionFromAccount,
   type SessionUser
 } from "../lib/session";
 import { isSupabaseConfigured } from "../lib/supabase";
+import { fetchCompanyById } from "../services/company";
+import { buildSessionAccount, fetchRegistrationById } from "../services/registration";
 import {
   createDispute,
   fetchDealsForSelect,
@@ -119,6 +122,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setModal({ open: false, title: "", body: null, footer: null });
     setDataReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!sessionUser?.id || !isSupabaseConfigured) return;
+    void (async () => {
+      try {
+        const account = await fetchRegistrationById(sessionUser.id);
+        if (!account) return;
+        const enriched = await buildSessionAccount(account);
+        const company = enriched.company_id ? await fetchCompanyById(enriched.company_id) : null;
+        const fresh = sessionFromAccount(enriched, company);
+        setSessionUser((prev) => {
+          if (!prev || prev.id !== fresh.id) return prev;
+          const changed =
+            prev.isAdmin !== fresh.isAdmin ||
+            prev.adminRole !== fresh.adminRole ||
+            prev.accountType !== fresh.accountType ||
+            prev.companyId !== fresh.companyId ||
+            prev.plan !== fresh.plan;
+          if (changed) {
+            writeSession(fresh);
+            return fresh;
+          }
+          return prev;
+        });
+      } catch (err) {
+        console.error("Failed to refresh session from account", err);
+      }
+    })();
+  }, [sessionUser?.id]);
 
   const showToastStatic = (message: string, type: ToastType = "") => {
     const id = Date.now() + Math.floor(Math.random() * 999);

@@ -13,10 +13,12 @@ import {
   Settings,
   ShieldCheck,
   Store,
-  Truck
+  Truck,
+  UserCog
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
+import { canAccessAdminPanel, isSellerNav } from "../../lib/account-capabilities";
 import { fmtPrice } from "../../lib/format";
 
 type NavItem = {
@@ -26,6 +28,7 @@ type NavItem = {
   badgeKey?: "disputes" | "messages";
   sellerOnly?: boolean;
   buyerOnly?: boolean;
+  adminOnly?: boolean;
 };
 
 const SECTIONS: { label: string; items: NavItem[] }[] = [
@@ -54,6 +57,7 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
       { to: "/profile", label: "Company Profile", icon: Building2, buyerOnly: true },
       { to: "/pricing", label: "Pricing / Billing", icon: CreditCard },
       { to: "/compliance", label: "Compliance Center", icon: ShieldCheck },
+      { to: "/admin", label: "Admin Panel", icon: UserCog, adminOnly: true },
       { to: "/settings", label: "Settings", icon: Settings }
     ]
   }
@@ -61,17 +65,17 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () => void }) {
   const location = useLocation();
-  const { showToast, sessionUser } = useApp();
+  const { showToast, sessionUser, setSearchQuery } = useApp();
   const { badges } = useExchangeData();
 
-  const accountType = sessionUser?.accountType;
-  const isSeller = accountType === "agency" || accountType === "solo_recruiter";
+  const isSeller = isSellerNav(sessionUser);
 
   const isActive = (to: string) =>
     location.pathname === to || (to === "/dashboard" && location.pathname === "/");
 
   const visibleItems = (items: NavItem[]) =>
     items.filter((item) => {
+      if (item.adminOnly && !canAccessAdminPanel(sessionUser)) return false;
       if (item.sellerOnly && !isSeller) return false;
       if (item.buyerOnly && isSeller) return false;
       return true;
@@ -100,7 +104,15 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () =
                 const active = isActive(item.to);
                 const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
                 return (
-                  <Link key={item.to} to={item.to} className={`nav-item ${active ? "active" : ""}`} onClick={onNavigate}>
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`nav-item ${active ? "active" : ""}`}
+                    onClick={() => {
+                      if (item.adminOnly) setSearchQuery("");
+                      onNavigate?.();
+                    }}
+                  >
                     <span className="icon"><Icon /></span>
                     {item.label}
                     {badgeCount > 0 ? (

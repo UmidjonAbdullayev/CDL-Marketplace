@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, FileSignature, ShieldCheck } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { canStartHiring } from "../lib/account-capabilities";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { BUYER_CONTRACT_CLAUSES } from "../lib/hiring";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
@@ -13,7 +14,7 @@ export default function ContractPage() {
   const { listingId } = useParams();
   const navigate = useNavigate();
   const { showToast, sessionUser } = useApp();
-  const canStartHiring = sessionUser?.accountType === "carrier";
+  const canStartHiringProcess = canStartHiring(sessionUser);
   const id = Number(listingId);
 
   const [driver, setDriver] = useState<DriverCard | null>(null);
@@ -23,11 +24,11 @@ export default function ContractPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!canStartHiring) {
-      showToast("Only carrier accounts can start hiring processes", "error");
+    if (!canStartHiringProcess) {
+      showToast("Only carrier and platform admin accounts can start hiring processes", "error");
       navigate("/marketplace", { replace: true });
     }
-  }, [canStartHiring, navigate, showToast]);
+  }, [canStartHiringProcess, navigate, showToast]);
 
   useEffect(() => {
     if (!id) return;
@@ -81,7 +82,7 @@ export default function ContractPage() {
       if (isSupabaseConfigured) {
         dealId = await startHiringProcess(driver.id, signerName.trim());
       }
-      invalidateDataViews(["deals", "marketplace", "dashboard", "messages"]);
+      invalidateDataViews(["deals", "marketplace", "dashboard", "messages", "my-listings"]);
       showToast("Agreement signed. Awaiting seller signature.", "success");
       navigate(`/deals/${dealId}`);
     } catch {

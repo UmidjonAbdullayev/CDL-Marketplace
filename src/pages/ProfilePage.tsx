@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Award, ShieldCheck, Star } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { accountTypeLabel, canActAsCarrier, isPlatformStaff } from "../lib/account-capabilities";
 import { PageHeader, VerifiedBadge } from "../lib/badges";
 import { fetchCompanyById } from "../services/company";
 import { fetchRegistrationById } from "../services/registration";
@@ -84,9 +85,14 @@ export default function ProfilePage() {
 
   const displayName = sessionUser?.name ?? "Your Company";
   const initials = sessionUser?.initials ?? "—";
-  const profileTitle = sessionUser?.accountType === "carrier" ? "Company Profile" : "Recruiter Profile";
-  const profileDesc =
-    sessionUser?.accountType === "carrier"
+  const staff = isPlatformStaff(sessionUser);
+  const actsAsCarrier = canActAsCarrier(sessionUser);
+  const profileTitle = staff
+    ? sessionUser?.adminRole === "manager" ? "Platform Manager Profile" : "Platform Admin Profile"
+    : actsAsCarrier ? "Company Profile" : "Recruiter Profile";
+  const profileDesc = staff
+    ? "Platform operations account with full marketplace and admin access."
+    : actsAsCarrier
       ? "Your company profile and recruiting details."
       : "Your public seller profile and recruiting details.";
 
@@ -106,10 +112,12 @@ export default function ProfilePage() {
         <div style={{ flex: 1 }}><h3 className="t-section">{displayName}</h3>
           <div style={{ display: "flex", gap: "var(--s2)", margin: "var(--s2) 0", flexWrap: "wrap" }}>
             {sessionUser?.status === "active" ? <VerifiedBadge text="Verified Account" /> : null}
-            {sessionUser?.accountType !== "carrier" ? (
-              <span className="badge badge-navy"><Award className="icon-sm" /> Seller</span>
-            ) : (
+            {staff ? (
+              <span className="badge badge-purple"><ShieldCheck className="icon-sm" /> {accountTypeLabel(sessionUser)}</span>
+            ) : actsAsCarrier ? (
               <span className="badge badge-blue"><ShieldCheck className="icon-sm" /> Buyer / Recruiter</span>
+            ) : (
+              <span className="badge badge-navy"><Award className="icon-sm" /> Seller</span>
             )}
           </div>
           <div className="t-secondary">

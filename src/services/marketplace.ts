@@ -177,7 +177,7 @@ export async function fetchDriverCardsPage(
   let q: any = supabase
     .from("driver_listings")
     .select(LISTING_CARD_SELECT, { count: "exact" })
-    .in("status", ["active", "reserved"]);
+    .eq("status", "active");
 
   if (viewer === "carrier") {
     q = q.not("carrier_price", "is", null).gt("carrier_price", 0);
@@ -191,12 +191,12 @@ export async function fetchDriverCardsPage(
   if (filters.priceMin) {
     q = viewer === "carrier"
       ? q.gte("carrier_price", filters.priceMin)
-      : q.gte("net_payout", filters.priceMin);
+      : q.gte("price", filters.priceMin);
   }
   if (filters.priceMax && filters.priceMax < 99999) {
     q = viewer === "carrier"
       ? q.lte("carrier_price", filters.priceMax)
-      : q.lte("net_payout", filters.priceMax);
+      : q.lte("price", filters.priceMax);
   }
   if (filters.verified) q = q.eq("verified", true);
   if (filters.route) q = q.eq("route_pref", filters.route);
@@ -245,17 +245,35 @@ export async function fetchListingById(id: number, viewer: MarketplaceViewer = "
   return data ? rowToDriver(data as unknown as ListingDetailRow, viewer) : null;
 }
 
-export async function fetchHotListings(): Promise<HotListing[]> {
+export async function fetchHotListings(viewer: MarketplaceViewer = "carrier"): Promise<HotListing[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q: any = supabase
     .from("driver_listings")
-    .select("id, first_name, last_name, years_exp, state, route_pref, equipment, hot_score, price")
+    .select("id, first_name, last_name, years_exp, state, route_pref, equipment, hot_score, price, carrier_price")
+    .eq("status", "active")
     .not("hot_score", "is", null)
     .gte("hot_score", 80)
     .order("hot_score", { ascending: false })
     .limit(6);
+  if (viewer === "carrier") {
+    q = q.not("carrier_price", "is", null).gt("carrier_price", 0);
+  }
+  const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []).map((r, i) => ({
+  type HotRow = {
+    id: number;
+    first_name: string;
+    last_name: string;
+    years_exp: number;
+    state: string;
+    route_pref: string;
+    equipment: string;
+    hot_score: number | null;
+    price: number;
+    carrier_price: number | null;
+  };
+  return ((data ?? []) as HotRow[]).map((r, i) => ({
     id: r.id,
     name: `${r.first_name} ${r.last_name.charAt(0)}.`,
     exp: `${r.years_exp} yrs`,
@@ -263,7 +281,7 @@ export async function fetchHotListings(): Promise<HotListing[]> {
     route: r.route_pref,
     trailer: r.equipment,
     score: r.hot_score ?? 0,
-    price: r.price,
+    price: viewer === "carrier" ? (r.carrier_price ?? r.price) : r.price,
     hot: i === 0
   }));
 }
@@ -699,6 +717,15 @@ export async function sendConversationFile(
   });
 }
 
+export type SellerListingsTab = "active" | "reserved" | "sold" | "expired";
+
+const SELLER_TAB_STATUSES: Record<SellerListingsTab, string[]> = {
+  active: ["pending", "active", "paused"],
+  reserved: ["hiring", "reserved"],
+  sold: ["sold"],
+  expired: ["expired"]
+};
+
 export type SellerListingRow = {
   id: number;
   first_name: string;
@@ -706,27 +733,28 @@ export type SellerListingRow = {
   state: string;
   equipment: string;
   price: number;
-  net_payout: number | null;
   views: number;
   status: string;
+  driver_type: string;
 };
 
 export async function fetchSellerListingsPage(
-  status: string | undefined,
+  tab: SellerListingsTab,
   { page = 1, pageSize = DEFAULT_PAGE_SIZE }: PageParams = {}
 ): Promise<Paginated<SellerListingRow>> {
   if (!supabase) return toPaginated([], 0, page, pageSize);
 
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
+  const statuses = SELLER_TAB_STATUSES[tab];
 
-  let q = supabase
+  const { data, error, count } = await supabase
     .from("driver_listings")
-    .select("id, first_name, last_name, state, equipment, price, net_payout, views, status", { count: "exact" })
-    .eq("seller_company_id", getActiveCompanyId());
-  if (status) q = q.eq("status", status);
-
-  const { data, error, count } = await q.order("id").range(from, to);
+    .select("id, first_name, last_name, state, equipment, price, views, status, driver_type", { count: "exact" })
+    .eq("seller_company_id", getActiveCompanyId())
+    .in("status", statuses)
+    .order("updated_at", { ascending: false })
+    .range(from, to);
   if (error) throw error;
   return toPaginated(data ?? [], count, page, pageSize);
 }
@@ -739,8 +767,8 @@ export async function fetchSellerListingCounts() {
     .eq("seller_company_id", getActiveCompanyId());
   const rows = data ?? [];
   return {
-    active: rows.filter((r) => r.status === "active").length,
-    reserved: rows.filter((r) => r.status === "reserved").length,
+    active: rows.filter((r) => SELLER_TAB_STATUSES.active.includes(r.status)).length,
+    reserved: rows.filter((r) => SELLER_TAB_STATUSES.reserved.includes(r.status)).length,
     sold: rows.filter((r) => r.status === "sold").length,
     expired: rows.filter((r) => r.status === "expired").length
   };
@@ -800,6 +828,10 @@ export async function updateListingStatus(listingId: number, status: string): Pr
   if (!supabase) return;
   const { error } = await supabase.from("driver_listings").update({ status, updated_at: new Date().toISOString() }).eq("id", listingId);
   if (error) throw error;
+}
+
+export async function expireListing(listingId: number): Promise<void> {
+  return updateListingStatus(listingId, "expired");
 }
 
 export type NewListingInput = {

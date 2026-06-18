@@ -78,7 +78,7 @@ export async function ensureCompanyForAccount(account: RegistrationAccount): Pro
     .eq("id", account.id);
   if (updateErr) throw updateErr;
 
-  return { ...account, company_id: companyId, is_admin: Boolean(row?.is_admin) };
+  return { ...account, company_id: companyId, is_admin: Boolean(account.is_admin ?? row?.is_admin), admin_role: account.admin_role ?? row?.admin_role ?? "none" };
 }
 
 export async function buildSessionAccount(account: RegistrationAccount): Promise<RegistrationAccount> {

@@ -5,6 +5,7 @@ import { useApp } from "../context/AppContext";
 import { PageHeader } from "../lib/badges";
 import { statusBadgeClass } from "../lib/hiring";
 import { fmtRecruitingFee, fullName } from "../lib/format";
+import { isPlatformStaff } from "../lib/account-capabilities";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchOngoingDeals, type HiringDealRow } from "../services/hiring";
 
@@ -36,18 +37,19 @@ export default function OngoingDealsPage() {
   const [deals, setDeals] = useState<HiringDealRow[]>([]);
   const [loading, setLoading] = useState(true);
   const companyId = sessionUser?.companyId ?? "";
+  const platformWide = isPlatformStaff(sessionUser);
 
   useEffect(() => {
     void (async () => {
       try {
         if (isSupabaseConfigured && companyId) {
-          setDeals(await fetchOngoingDeals());
+          setDeals(await fetchOngoingDeals({ platformWide }));
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, [companyId]);
+  }, [companyId, platformWide]);
 
   return (
     <div className="page active">

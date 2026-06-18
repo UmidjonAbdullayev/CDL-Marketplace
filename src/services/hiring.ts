@@ -75,15 +75,18 @@ async function insertDealEvent(dealIdValue: string, stage: string, title: string
   await supabase.from("deal_events").insert({ deal_id: dealIdValue, stage, title, description });
 }
 
-export async function fetchOngoingDeals(): Promise<HiringDealRow[]> {
+export async function fetchOngoingDeals(options?: { platformWide?: boolean }): Promise<HiringDealRow[]> {
   if (!supabase) return [];
   const companyId = getActiveCompanyId();
-  const { data: deals, error } = await supabase
+  let q = supabase
     .from("deals")
     .select("*")
-    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
     .not("status", "eq", "Completed")
     .order("updated_at", { ascending: false });
+  if (!options?.platformWide) {
+    q = q.or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
+  }
+  const { data: deals, error } = await q;
   if (error) throw error;
   if (!deals?.length) return [];
 
@@ -161,7 +164,7 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
   if (dealErr) throw dealErr;
 
   await insertDealEvent(id, "contract", "Buyer signed recruiting agreement", `Signed by ${buyerSignerName}`);
-  await supabase.from("driver_listings").update({ status: "reserved", updated_at: now }).eq("id", listingId);
+  await supabase.from("driver_listings").update({ status: "hiring", updated_at: now }).eq("id", listingId);
 
   await supabase.from("activities").insert({
     activity_type: "deal",

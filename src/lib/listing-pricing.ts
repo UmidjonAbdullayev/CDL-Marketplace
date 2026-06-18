@@ -52,8 +52,7 @@ export function displayPriceForViewer(
     const amount = row.carrier_price ?? row.price;
     return { amount, label: "Platform recruiting fee" };
   }
-  const amount = row.net_payout ?? Math.round(row.price * (1 - PLATFORM_FEE_RATE));
-  return { amount, label: "Your net payout" };
+  return { amount: row.price, label: "Listing price" };
 }
 
 export function marketplaceViewerFromAccountType(accountType?: string): MarketplaceViewer {

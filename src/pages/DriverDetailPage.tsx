@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, FileText, Info, Lock, ShieldCheck, UserCheck } f
 import { useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { canStartHiring } from "../lib/account-capabilities";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
@@ -14,7 +15,7 @@ export default function DriverDetailPage() {
 
   const listingId = Number(id);
   const driver = useMemo(() => (listingId ? driverDetails[listingId] ?? null : null), [driverDetails, listingId]);
-  const canStartHiring = sessionUser?.accountType === "carrier";
+  const canStartHiringProcess = canStartHiring(sessionUser);
 
   useEffect(() => {
     if (listingId) void loadDriverDetail(listingId);
@@ -75,12 +76,12 @@ export default function DriverDetailPage() {
               <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase", marginBottom: 4 }}>{driver.priceLabel ?? "Platform Recruiting Fee"}</div>
               <div className="detail-price">{fmtRecruitingFee(driver.price)}</div>
               <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
-                {canStartHiring
-                  ? "Fee for recruiting coordination through CDL Exchange (includes platform markup)"
-                  : "Your net payout after the 15% platform fee is deducted from your list price"}
+                {canStartHiringProcess
+                  ? "Fee for recruiting coordination through CDL Exchange"
+                  : "Your listed price for this driver lead"}
               </p>
               <div className="detail-seller"><StarRating rating={driver.sellerRating} /> {driver.seller}</div>
-              {canStartHiring ? (
+              {canStartHiringProcess ? (
                 <button
                   className="btn btn-primary btn-block"
                   style={{ marginTop: 16 }}
