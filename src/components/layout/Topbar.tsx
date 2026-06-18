@@ -11,7 +11,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { searchQuery, setSearchQuery, showToast, sessionUser, signOut } = useApp();
-  const { badges, notifications, dismissAllNotifications } = useExchangeData();
+  const { badges, notifications, dismissAllNotifications, dismissNotification } = useExchangeData();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +103,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             onClose={() => setNotifOpen(false)}
             items={notifications}
             onMarkAllRead={dismissAllNotifications}
+            onDismiss={dismissNotification}
           />
         </div>
         <button className="icon-btn" id="msgBtn" title="Messages" onClick={() => navigate("/messages")}>

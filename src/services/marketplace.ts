@@ -80,6 +80,7 @@ export function rowToCard(row: ListingCardRowWithHot, viewer: MarketplaceViewer 
   const hotScore = row.hot_score ?? 0;
   const createdAt = row.created_at ?? new Date().toISOString();
   const { amount, label } = displayPriceForViewer(viewer, row);
+  const hideRecruiterPricing = viewer === "carrier";
   return {
     id: row.id,
     first: row.first_name,
@@ -93,9 +94,9 @@ export function rowToCard(row: ListingCardRowWithHot, viewer: MarketplaceViewer 
     verified: row.verified,
     price: amount,
     priceLabel: label,
-    listPrice: row.price,
-    netPayout: row.net_payout ?? null,
-    carrierPrice: row.carrier_price ?? null,
+    listPrice: hideRecruiterPricing ? undefined : row.price,
+    netPayout: hideRecruiterPricing ? undefined : row.net_payout ?? null,
+    carrierPrice: hideRecruiterPricing ? row.carrier_price ?? null : undefined,
     seller: company?.name ?? "Verified Seller",
     sellerRating: Number(company?.rating ?? 4),
     hotScore,
@@ -281,7 +282,7 @@ export async function fetchHotListings(viewer: MarketplaceViewer = "carrier"): P
     route: r.route_pref,
     trailer: r.equipment,
     score: r.hot_score ?? 0,
-    price: viewer === "carrier" ? (r.carrier_price ?? r.price) : r.price,
+    price: viewer === "carrier" ? (r.carrier_price ?? 0) : r.price,
     hot: i === 0
   }));
 }
@@ -644,6 +645,21 @@ export async function fetchConversationMessages(conversationId: string): Promise
   return enrichMessagesWithAttachmentUrls(data ?? []);
 }
 
+export function subscribeMarketplaceListings(onChange: () => void): () => void {
+  if (!supabase) return () => {};
+  const channel = supabase
+    .channel("marketplace-listings")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "driver_listings" },
+      () => onChange()
+    )
+    .subscribe();
+  return () => {
+    if (supabase) void supabase.removeChannel(channel);
+  };
+}
+
 export function subscribeConversationMessages(conversationId: string, onChange: () => void): () => void {
   if (!supabase) return () => {};
   const channel = supabase
@@ -1001,11 +1017,13 @@ export async function fetchDashboardStats() {
 
 export async function fetchDealsForSelect(): Promise<{ id: string }[]> {
   if (!supabase) return [];
+  const companyId = getActiveCompanyId();
   const { data, error } = await supabase
     .from("deals")
     .select("id")
-    .eq("buyer_company_id", getActiveCompanyId())
-    .in("status", ["Contact Released", "Orientation Scheduled", "Hired Confirmed", "Disputed"]);
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
+    .not("status", "eq", "Completed")
+    .neq("hiring_stage", "completed");
   if (error) throw error;
   return data ?? [];
 }

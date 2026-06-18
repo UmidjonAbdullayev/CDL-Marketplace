@@ -313,9 +313,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const openDisputeModal = useCallback((presetDealId?: string) => {
     void fetchDealsForSelect().then((deals) => {
-      let dealId = presetDealId && deals.some((d) => d.id === presetDealId)
+      const dealIds = new Set(deals.map((d) => d.id));
+      let dealId = presetDealId && (dealIds.has(presetDealId) || presetDealId)
         ? presetDealId
-        : deals[0]?.id ?? "";
+        : deals[0]?.id ?? presetDealId ?? "";
       let reason = "Invalid phone";
       let description = "";
       openModal(
@@ -324,7 +325,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           <div className="form-group">
             <label>Deal ID</label>
             <select defaultValue={dealId} onChange={(e) => { dealId = e.target.value; }}>
-              {deals.length === 0 ? <option value="">No eligible deals</option> : deals.map((d) => (
+              {deals.length === 0 && presetDealId ? (
+                <option value={presetDealId}>{presetDealId}</option>
+              ) : null}
+              {deals.length === 0 && !presetDealId ? (
+                <option value="">No eligible deals</option>
+              ) : null}
+              {deals.map((d) => (
                 <option key={d.id} value={d.id}>{d.id}</option>
               ))}
             </select>

@@ -30,6 +30,7 @@ import {
   sendDealMessage,
   signSellerContract,
   subscribeDealMessages,
+  subscribeDealWorkspace,
   uploadDealDocument,
   recordDealDocument,
   type DealMessageRow,
@@ -126,12 +127,12 @@ export default function DealWorkspacePage() {
     const carrierPrice = workspace?.carrierPrice ?? deal?.amount ?? 0;
     if (isRecruiterParty) {
       return {
-        label: "Recruitment Fee",
+        label: "Your listing price",
         value: listPrice != null ? fmtRecruitingFee(listPrice) : "—"
       };
     }
     return {
-      label: "Recruitment Fee",
+      label: "Platform recruiting fee",
       value: fmtRecruitingFee(carrierPrice)
     };
   }, [workspace, deal, isRecruiterParty]);
@@ -153,6 +154,12 @@ export default function DealWorkspacePage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!dealId || isAdmin) return;
+    const unsub = subscribeDealWorkspace(dealId, () => void load());
+    return unsub;
+  }, [dealId, isAdmin, load]);
 
   const pullMessages = useCallback(async () => {
     if (!conversationId) return;
@@ -365,6 +372,7 @@ export default function DealWorkspacePage() {
         </div>
       </header>
 
+      <div className="deal-party-body">
       {needsSellerSign && isSellerParty ? (
         <div className="card seller-contract-banner">
           <div className="card-body">
@@ -649,6 +657,7 @@ export default function DealWorkspacePage() {
             </div>
           </div>
         </aside>
+      </div>
       </div>
     </div>
   );

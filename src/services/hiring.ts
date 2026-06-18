@@ -142,6 +142,12 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
     if (!existing.buyer_signed_at) {
       await signBuyerContract(existing.id, buyerSignerName);
     }
+    if (existing.listing_id) {
+      await supabase
+        .from("driver_listings")
+        .update({ status: "hiring", updated_at: new Date().toISOString() })
+        .eq("id", existing.listing_id);
+    }
     return existing.id;
   }
 
@@ -536,6 +542,36 @@ export function subscribeDealMessages(conversationId: string, onChange: () => vo
         schema: "public",
         table: "messages",
         filter: `conversation_id=eq.${conversationId}`
+      },
+      () => onChange()
+    )
+    .subscribe();
+  return () => {
+    if (supabase) void supabase.removeChannel(channel);
+  };
+}
+
+export function subscribeDealWorkspace(dealIdValue: string, onChange: () => void): () => void {
+  if (!supabase) return () => {};
+  const channel = supabase
+    .channel(`deal-workspace-${dealIdValue}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "deal_events",
+        filter: `deal_id=eq.${dealIdValue}`
+      },
+      () => onChange()
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "deals",
+        filter: `id=eq.${dealIdValue}`
       },
       () => onChange()
     )

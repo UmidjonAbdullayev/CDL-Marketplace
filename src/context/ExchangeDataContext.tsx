@@ -40,6 +40,7 @@ import {
   fetchSellerReservations,
   fetchSellerStats,
   sendMessage as sendMessageApi,
+  subscribeMarketplaceListings,
   type ConversationSummary,
   type DealRow,
   type DisputeRow,
@@ -156,6 +157,7 @@ interface ExchangeDataValue {
   badges: { disputes: number; messages: number };
   notifications: AppNotification[];
   dismissAllNotifications: () => void;
+  dismissNotification: (id: string) => void;
   refreshNotifications: () => Promise<void>;
 
   dashboardPeriod: DashboardPeriod;
@@ -424,6 +426,15 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     setDismissedNotifIds(next);
     localStorage.setItem("dismissed_notifications", JSON.stringify([...next]));
   }, [notifications, dismissedNotifIds]);
+
+  const dismissNotification = useCallback((id: string) => {
+    setDismissedNotifIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set([...prev, id]);
+      localStorage.setItem("dismissed_notifications", JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
 
   const refreshDashboard = useCallback(async (force = false) => {
     const mode = force ? "background" : refreshMode(dashboard.loadedAt);
@@ -812,6 +823,14 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => registerDataInvalidation(invalidateViews), [invalidateViews]);
 
   useEffect(() => {
+    if (!isSupabaseConfigured || appLoading) return;
+    const unsub = subscribeMarketplaceListings(() => {
+      invalidateViews(["marketplace", "dashboard", "my-listings"]);
+    });
+    return unsub;
+  }, [appLoading, invalidateViews]);
+
+  useEffect(() => {
     if (!isSupabaseConfigured) {
       setAppLoading(false);
       return;
@@ -893,6 +912,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
       badges,
       notifications: visibleNotifications,
       dismissAllNotifications,
+      dismissNotification,
       refreshNotifications,
       dashboardPeriod,
       setDashboardPeriod,
@@ -987,6 +1007,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
       badges,
       visibleNotifications,
       dismissAllNotifications,
+      dismissNotification,
       refreshNotifications,
       dashboardPeriod,
       dashboard,

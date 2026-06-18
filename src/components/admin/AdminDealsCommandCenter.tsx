@@ -26,6 +26,7 @@ import {
   sendDealFileMessage,
   sendDealMessage,
   subscribeDealMessages,
+  subscribeDealWorkspace,
   type DealInternalNote,
   type DealMessageRow,
   type DealWorkspace
@@ -199,6 +200,12 @@ export function AdminDealsCommandCenter() {
       setWorkspace(null);
       setInternalNotes([]);
     }
+  }, [selectedId, loadDetail]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const unsub = subscribeDealWorkspace(selectedId, () => void loadDetail(selectedId));
+    return unsub;
   }, [selectedId, loadDetail]);
 
   const conversationId = chatLane === "carrier"

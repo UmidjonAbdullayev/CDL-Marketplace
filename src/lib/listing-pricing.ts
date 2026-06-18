@@ -49,7 +49,7 @@ export function displayPriceForViewer(
   }
 ): { amount: number; label: string } {
   if (viewer === "carrier") {
-    const amount = row.carrier_price ?? row.price;
+    const amount = row.carrier_price != null && row.carrier_price > 0 ? row.carrier_price : 0;
     return { amount, label: "Platform recruiting fee" };
   }
   return { amount: row.price, label: "Listing price" };

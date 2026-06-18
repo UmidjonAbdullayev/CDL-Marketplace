@@ -6,12 +6,14 @@ export function NotificationsPanel({
   open,
   onClose,
   items,
-  onMarkAllRead
+  onMarkAllRead,
+  onDismiss
 }: {
   open: boolean;
   onClose: () => void;
   items: AppNotification[];
   onMarkAllRead: () => void;
+  onDismiss: (id: string) => void;
 }) {
   const navigate = useNavigate();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -49,6 +51,7 @@ export function NotificationsPanel({
               type="button"
               className={`notif-item urgency-${n.urgency}`}
               onClick={() => {
+                onDismiss(n.id);
                 onClose();
                 navigate(n.href);
               }}

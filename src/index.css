@@ -310,7 +310,10 @@ body.sidebar-open .content { overflow: hidden; touch-action: none; }
   flex-direction: column;
 }
 .content:has(.messages-page.active),
-.content:has(.deal-workspace-page--chat-active),
+.content:has(.deal-workspace-page--chat-active) {
+  overflow: hidden;
+  padding-bottom: 0;
+}
 .content:has(.deal-workspace-page--party) {
   overflow: hidden;
   padding-bottom: 0;
@@ -323,8 +326,14 @@ body.sidebar-open .content { overflow: hidden; touch-action: none; }
 .page.active { display: block; animation: fadeIn var(--transition-page) ease; }
 .page.active.messages-page,
 .page.active.deal-workspace-page--chat-active,
-.page.active.deal-workspace-page--party,
 .page.active.admin-page--deals {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.page.active.deal-workspace-page--party {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1058,17 +1067,54 @@ tbody tr:hover td { background: var(--bg); }
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  margin: -22px calc(-1 * var(--s6)) -96px;
-  padding: 22px var(--s6) 24px;
   background: var(--bg);
+}
+.deal-workspace-page--party .card {
+  flex-shrink: 0;
+  isolation: isolate;
+}
+.deal-party-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 .deal-party-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
   margin-bottom: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   flex-shrink: 0;
+}
+.deal-workspace-page--party .seller-contract-banner {
+  flex-shrink: 0;
+  margin-bottom: 16px;
+}
+.deal-party-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  align-items: stretch;
+}
+.deal-party-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .deal-party-header-left {
   display: flex;
@@ -1098,20 +1144,8 @@ tbody tr:hover td { background: var(--bg); }
   cursor: pointer;
   color: var(--text-secondary);
 }
-.deal-party-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: 16px;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.deal-party-main {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-  overflow-y: auto;
+.deal-driver-card {
+  flex-shrink: 0;
 }
 .deal-driver-card .card-header h3 {
   display: flex;
@@ -1174,7 +1208,12 @@ tbody tr:hover td { background: var(--bg); }
   color: var(--text-secondary);
 }
 .deal-driver-lock-note { margin-top: 12px; }
-.deal-party-tabs-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.deal-party-tabs-card {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 320px;
+}
 .deal-party-tabs {
   display: flex;
   gap: 0;
@@ -1197,7 +1236,10 @@ tbody tr:hover td { background: var(--bg); }
   color: var(--primary);
   border-bottom-color: var(--primary);
 }
-.deal-party-tab-body { flex: 1; overflow-y: auto; }
+.deal-party-tab-body {
+  flex: 1;
+  min-height: 0;
+}
 .deal-pipeline-stepper {
   display: flex;
   gap: 6px;
@@ -1308,6 +1350,7 @@ tbody tr:hover td { background: var(--bg); }
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1315,9 +1358,11 @@ tbody tr:hover td { background: var(--bg); }
 .deal-party-chat-card {
   display: flex;
   flex-direction: column;
-  min-height: 420px;
-  flex-shrink: 0;
+  height: 520px;
+  min-height: 520px;
+  max-height: 520px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .deal-party-chat-head {
   display: flex;
@@ -1349,10 +1394,16 @@ tbody tr:hover td { background: var(--bg); }
   border-radius: 0;
   box-shadow: none;
   flex: 1;
-  min-height: 320px;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .messenger-panel--party-rail .messenger-panel-messages {
-  min-height: 260px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .deal-party-chat-locked {
   flex: 1;
@@ -1392,16 +1443,15 @@ tbody tr:hover td { background: var(--bg); }
   font-weight: 600;
   text-align: right;
 }
-.deal-workspace-page--party .seller-contract-banner {
+.deal-party-summary {
   flex-shrink: 0;
-  margin-bottom: 16px;
 }
 @media (max-width: 1100px) {
   .deal-party-layout { grid-template-columns: 1fr; overflow-y: auto; }
-  .deal-party-main { overflow: visible; }
-  .deal-party-rail { overflow: visible; }
+  .deal-party-main { overflow-y: visible; max-height: none; }
+  .deal-party-rail { overflow-y: visible; max-height: none; }
+  .deal-party-chat-card { height: 480px; min-height: 480px; max-height: 480px; }
   .deal-pipeline-details { grid-template-columns: 1fr; }
-  .deal-workspace-page--party { margin: 0; padding: 0; }
 }
 
 .messenger-panel {
@@ -2531,9 +2581,11 @@ tbody tr:hover td { background: var(--bg); }
 .admin-chat-card {
   display: flex;
   flex-direction: column;
-  min-height: 280px;
-  flex: 1;
+  height: 480px;
+  min-height: 480px;
+  max-height: 480px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .admin-chat-card .card-header { padding: 12px 14px; flex-shrink: 0; }
 .admin-chat-card .card-header h3 {
@@ -2582,11 +2634,16 @@ tbody tr:hover td { background: var(--bg); }
   box-shadow: none;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .messenger-panel--admin-rail .messenger-panel-messages {
-  max-height: none;
   flex: 1;
-  min-height: 180px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: none;
 }
 .admin-notes-card .card-header h3 {
   display: flex;
