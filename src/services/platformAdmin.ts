@@ -229,7 +229,7 @@ export type PlatformOngoingDeal = {
   seller_name: string;
   driver_label: string;
   assigned_admin_id: string | null;
-  assigned_admin_name: string | null;
+  assigned_admin_name: string;
   updated_at: string;
 };
 
@@ -285,4 +285,101 @@ export async function fetchPlatformOngoingDeals(
 
 export async function assignDealListingAdmin(listingId: number, adminId: string | null): Promise<void> {
   return assignListingToAdmin(listingId, adminId);
+}
+
+export type AdminChatInboxRow = {
+  conversation_id: string;
+  channel_type: "carrier_admin" | "recruiter_admin";
+  deal_id: string;
+  deal_status: string;
+  hiring_stage: string;
+  party_name: string;
+  driver_label: string;
+  assigned_admin_id: string | null;
+  assigned_admin_name: string;
+  last_message_at: string | null;
+  updated_at: string;
+};
+
+export type AdminDealChatFilters = {
+  adminId?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export async function fetchAdminDealChatInbox(
+  viewerId: string,
+  adminRole: AdminRole,
+  filters: AdminDealChatFilters = {}
+): Promise<AdminChatInboxRow[]> {
+  if (!supabase) return [];
+
+  const { data: deals, error } = await supabase
+    .from("deals")
+    .select("id, status, hiring_stage, buyer_company_id, seller_company_id, listing_id, updated_at")
+    .not("status", "eq", "Completed")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  if (!deals?.length) return [];
+
+  const listingIds = deals.map((d) => d.listing_id).filter((id): id is number => id != null);
+  const companyIds = [...new Set(deals.flatMap((d) => [d.buyer_company_id, d.seller_company_id]))];
+
+  const [{ data: listings }, { data: companies }, { data: convs }, admins] = await Promise.all([
+    listingIds.length
+      ? supabase.from("driver_listings").select("id, first_name, last_name, assigned_admin_id").in("id", listingIds)
+      : Promise.resolve({ data: [] as { id: number; first_name: string; last_name: string; assigned_admin_id: string | null }[] }),
+    supabase.from("companies").select("id, name").in("id", companyIds),
+    supabase.from("conversations").select("id, deal_id, channel_type, last_message_at").in("channel_type", ["carrier_admin", "recruiter_admin"]),
+    fetchPlatformAdmins()
+  ]);
+
+  const listingMap = new Map((listings ?? []).map((l) => [l.id, l]));
+  const companyMap = new Map((companies ?? []).map((c) => [c.id, c.name]));
+  const adminMap = new Map(admins.map((a) => [a.id, a.name]));
+  const dealMap = new Map(deals.map((d) => [d.id, d]));
+
+  let rows = (convs ?? [])
+    .map((c) => {
+      const deal = dealMap.get(c.deal_id!);
+      if (!deal) return null;
+      const listing = deal.listing_id ? listingMap.get(deal.listing_id) : null;
+      const assignedId = listing?.assigned_admin_id ?? null;
+      const isCarrier = c.channel_type === "carrier_admin";
+      const partyId = isCarrier ? deal.buyer_company_id : deal.seller_company_id;
+      const row: AdminChatInboxRow = {
+        conversation_id: c.id,
+        channel_type: c.channel_type as "carrier_admin" | "recruiter_admin",
+        deal_id: deal.id,
+        deal_status: deal.status,
+        hiring_stage: deal.hiring_stage,
+        party_name: companyMap.get(partyId) ?? "—",
+        driver_label: listing ? `${listing.first_name} ${listing.last_name.charAt(0)}.` : "—",
+        assigned_admin_id: assignedId,
+        assigned_admin_name: assignedId ? (adminMap.get(assignedId) ?? "—") : "Unassigned",
+        last_message_at: c.last_message_at,
+        updated_at: deal.updated_at
+      };
+      return row;
+    })
+    .filter((r): r is AdminChatInboxRow => r != null);
+
+  if (adminRole === "admin") {
+    rows = rows.filter((r) => r.assigned_admin_id === viewerId);
+  }
+  if (filters.adminId) {
+    rows = rows.filter((r) => r.assigned_admin_id === filters.adminId);
+  }
+  if (filters.status) {
+    rows = rows.filter((r) => r.deal_status === filters.status || r.hiring_stage === filters.status);
+  }
+  if (filters.dateFrom) {
+    rows = rows.filter((r) => r.updated_at >= filters.dateFrom!);
+  }
+  if (filters.dateTo) {
+    rows = rows.filter((r) => r.updated_at <= `${filters.dateTo}T23:59:59`);
+  }
+
+  return rows.sort((a, b) => (b.last_message_at ?? b.updated_at).localeCompare(a.last_message_at ?? a.updated_at));
 }

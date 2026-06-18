@@ -7,10 +7,11 @@ import {
   MessageSquare,
   User
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MessengerPanel } from "../components/chat/MessengerPanel";
 import { useApp } from "../context/AppContext";
-import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
+import { isPlatformStaff } from "../lib/account-capabilities";
+import { ScoreBadge, VerifiedBadge } from "../lib/badges";
 import {
   BUYER_CONTRACT_CLAUSES,
   HIRING_STAGES,
@@ -21,7 +22,7 @@ import {
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
 import {
-  advanceHiringStage,
+  advanceHiringStageAsAdmin,
   fetchDealMessages,
   fetchDealWorkspace,
   isOwnDealMessage,
@@ -48,6 +49,7 @@ function formatMsgTime(iso: string) {
 
 export default function DealWorkspacePage() {
   const { dealId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast, sessionUser } = useApp();
 
@@ -57,12 +59,52 @@ export default function DealWorkspacePage() {
   const [messages, setMessages] = useState<DealMessageRow[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
+  const [adminChatLane, setAdminChatLane] = useState<"carrier" | "recruiter">(
+    searchParams.get("chat") === "recruiter" ? "recruiter" : "carrier"
+  );
   const [sellerName, setSellerName] = useState(sessionUser?.name ?? "");
   const [sellerAgreed, setSellerAgreed] = useState(false);
   const [signing, setSigning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const docFileInputRef = useRef<HTMLInputElement>(null);
-  const conversationId = workspace?.conversationId ?? null;
+
+  const isAdmin = isPlatformStaff(sessionUser);
+  const myCompanyId = sessionUser?.companyId ?? "";
+  const deal = workspace?.deal;
+  const driver = workspace?.driver;
+  const isBuyerParty = deal?.buyer_company_id === myCompanyId;
+  const isSellerParty = deal?.seller_company_id === myCompanyId;
+  const isCarrierParty = isBuyerParty && !isAdmin;
+  const isRecruiterParty = isSellerParty && !isAdmin;
+
+  const carrierChatOpen = Boolean(deal?.buyer_signed_at && workspace?.carrierConversationId);
+  const recruiterChatOpen = Boolean(deal?.seller_signed_at && workspace?.recruiterConversationId);
+  const chatOpen = isAdmin
+    ? carrierChatOpen || recruiterChatOpen
+    : isCarrierParty
+      ? carrierChatOpen
+      : isRecruiterParty
+        ? recruiterChatOpen
+        : false;
+
+  const channelPartyId = isAdmin
+    ? adminChatLane === "carrier"
+      ? deal?.buyer_company_id
+      : deal?.seller_company_id
+    : isCarrierParty
+      ? deal?.buyer_company_id
+      : deal?.seller_company_id;
+
+  const conversationId = isAdmin
+    ? adminChatLane === "carrier"
+      ? workspace?.carrierConversationId
+      : workspace?.recruiterConversationId
+    : isCarrierParty
+      ? workspace?.carrierConversationId
+      : workspace?.recruiterConversationId ?? null;
+
+  const currentStageIdx = stageIndex(deal?.hiring_stage ?? "contract");
+  const needsSellerSign = Boolean(deal && !deal.seller_signed_at && deal.buyer_signed_at);
 
   const load = useCallback(async () => {
     if (!dealId) return;
@@ -70,9 +112,6 @@ export default function DealWorkspacePage() {
       if (isSupabaseConfigured) {
         const ws = await fetchDealWorkspace(dealId);
         setWorkspace(ws);
-        if (ws?.conversationId) {
-          setMessages(await fetchDealMessages(ws.conversationId));
-        }
       }
     } catch {
       showToast("Failed to load deal", "error");
@@ -85,16 +124,6 @@ export default function DealWorkspacePage() {
     void load();
   }, [load]);
 
-  const driver = workspace?.driver;
-  const deal = workspace?.deal;
-  const currentStageIdx = stageIndex(deal?.hiring_stage ?? "contract");
-  const chatOpen = Boolean(deal?.buyer_signed_at && deal?.seller_signed_at);
-
-  const myCompanyId = sessionUser?.companyId ?? "";
-  const isSellerParty = deal?.seller_company_id === myCompanyId;
-  const isBuyerParty = deal?.buyer_company_id === myCompanyId;
-  const needsSellerSign = Boolean(deal && !deal.seller_signed_at && deal.buyer_signed_at);
-
   const pullMessages = useCallback(async () => {
     if (!conversationId) return;
     try {
@@ -104,6 +133,10 @@ export default function DealWorkspacePage() {
       /* background refresh */
     }
   }, [conversationId]);
+
+  useEffect(() => {
+    if (conversationId) void pullMessages();
+  }, [conversationId, pullMessages]);
 
   useEffect(() => {
     if (tab !== "chat" || !chatOpen || !conversationId) return;
@@ -127,13 +160,13 @@ export default function DealWorkspacePage() {
   };
 
   const sendChat = async () => {
-    if (!chatInput.trim() || !conversationId || !deal || !myCompanyId || chatSending) return;
+    if (!chatInput.trim() || !conversationId || !deal || !myCompanyId || chatSending || !channelPartyId) return;
     const text = chatInput.trim();
     setChatInput("");
     const tempId = `temp-${Date.now()}`;
     const optimistic: DealMessageRow = {
       id: tempId,
-      direction: myCompanyId === deal.buyer_company_id ? "out" : "in",
+      direction: myCompanyId === channelPartyId ? "out" : "in",
       body: text,
       created_at: new Date().toISOString(),
       attachment_name: null,
@@ -144,7 +177,7 @@ export default function DealWorkspacePage() {
     setMessages((prev) => [...prev, optimistic]);
     setChatSending(true);
     try {
-      const saved = await sendDealMessage(conversationId, text, myCompanyId, deal.buyer_company_id);
+      const saved = await sendDealMessage(conversationId, text, myCompanyId, channelPartyId);
       if (saved) mergeMessage(saved, tempId);
       else void pullMessages();
     } catch {
@@ -156,13 +189,13 @@ export default function DealWorkspacePage() {
   };
 
   const shareFile = async (file: File) => {
-    if (!conversationId || !deal || !myCompanyId || chatSending) return;
+    if (!conversationId || !deal || !myCompanyId || chatSending || !channelPartyId) return;
     const label = file.name;
     const body = `Shared file: ${label}`;
     const tempId = `temp-${Date.now()}`;
     const optimistic: DealMessageRow = {
       id: tempId,
-      direction: myCompanyId === deal.buyer_company_id ? "out" : "in",
+      direction: myCompanyId === channelPartyId ? "out" : "in",
       body,
       created_at: new Date().toISOString(),
       attachment_name: label,
@@ -173,7 +206,7 @@ export default function DealWorkspacePage() {
     setMessages((prev) => [...prev, optimistic]);
     setChatSending(true);
     try {
-      const saved = await sendDealFileMessage(conversationId, file, myCompanyId, deal.buyer_company_id);
+      const saved = await sendDealFileMessage(conversationId, file, myCompanyId, channelPartyId);
       if (saved?.attachment_path && saved.attachment_name) {
         await recordDealDocument(deal.id, saved.attachment_name, saved.attachment_path, myCompanyId);
       }
@@ -202,7 +235,7 @@ export default function DealWorkspacePage() {
     setSigning(true);
     try {
       await signSellerContract(deal.id, sellerName.trim());
-      showToast("Seller agreement signed. Chat is now open.", "success");
+      showToast("Seller agreement signed. Platform chat channels are open.", "success");
       await load();
       setTab("chat");
     } catch {
@@ -213,21 +246,36 @@ export default function DealWorkspacePage() {
   };
 
   const advanceStage = async (stage: HiringStage) => {
-    if (!deal || !isBuyerParty) return;
+    if (!deal || !isAdmin) return;
     try {
-      await advanceHiringStage(deal.id, stage, deal.buyer_company_id);
+      await advanceHiringStageAsAdmin(deal.id, stage);
       showToast(`Stage updated: ${stage}`, "success");
       await load();
     } catch {
-      showToast("Only the buyer can update hiring stages", "error");
+      showToast("Failed to update hiring stage", "error");
     }
   };
+
+  const priceSidebar = useMemo(() => {
+    const listPrice = workspace?.listPrice ?? null;
+    const carrierPrice = workspace?.carrierPrice ?? deal?.amount ?? 0;
+    if (isAdmin) {
+      return {
+        label: "Pricing (internal)",
+        value: `${listPrice != null ? fmtRecruitingFee(listPrice) : "—"} list · ${fmtRecruitingFee(carrierPrice)} carrier`
+      };
+    }
+    if (isCarrierParty) {
+      return { label: "Platform recruiting fee", value: fmtRecruitingFee(carrierPrice) };
+    }
+    return { label: "Your listing price", value: listPrice != null ? fmtRecruitingFee(listPrice) : "—" };
+  }, [workspace, deal, isAdmin, isCarrierParty]);
 
   const tabs = useMemo(
     () => [
       { id: "overview" as Tab, label: "Profile", icon: User },
       { id: "timeline" as Tab, label: "Timeline", icon: Clock },
-      { id: "chat" as Tab, label: "Chat", icon: MessageSquare, disabled: !chatOpen },
+      { id: "chat" as Tab, label: "Platform Chat", icon: MessageSquare, disabled: !chatOpen },
       { id: "documents" as Tab, label: "Contracts", icon: FileText, disabled: !deal?.buyer_signed_at }
     ],
     [chatOpen, deal?.buyer_signed_at]
@@ -257,7 +305,9 @@ export default function DealWorkspacePage() {
         <div>
           <h2>{fullName(driver)}</h2>
           <p className="t-secondary">
-            {deal.id} · {deal.companies_buyer?.name} ↔ {deal.companies_seller?.name}
+            {deal.id} · {isAdmin
+              ? `${deal.companies_buyer?.name} ↔ ${deal.companies_seller?.name} (platform mediated)`
+              : "Coordinated by CDL Exchange platform team"}
           </p>
         </div>
         <span className={`badge ${statusBadgeClass(deal.status)}`} style={{ marginLeft: "auto" }}>{deal.status}</span>
@@ -355,9 +405,13 @@ export default function DealWorkspacePage() {
           <div className="detail-sidebar">
             <div className="card">
               <div className="card-body">
-                <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase" }}>Platform Recruiting Fee</div>
-                <div className="detail-price">{fmtRecruitingFee(deal.amount)}</div>
-                <div className="detail-seller"><StarRating rating={driver.sellerRating} /> {driver.seller}</div>
+                <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase" }}>{priceSidebar.label}</div>
+                <div className="detail-price">{priceSidebar.value}</div>
+                {isAdmin ? (
+                  <p className="t-caption t-secondary" style={{ marginTop: 8 }}>Recruiters see list price only. Carriers see final approved fee only.</p>
+                ) : (
+                  <p className="t-caption t-secondary" style={{ marginTop: 8 }}>All updates are coordinated through platform admins.</p>
+                )}
                 <div className="contract-sign-status" style={{ marginTop: 12, fontSize: 13 }}>
                   <div>{deal.buyer_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Buyer signed</div>
                   <div>{deal.seller_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Seller signed</div>
@@ -372,7 +426,7 @@ export default function DealWorkspacePage() {
         <div className="card">
           <div className="card-header" style={{ justifyContent: "space-between" }}>
             <h3>Hiring Timeline</h3>
-            {chatOpen && isBuyerParty ? (
+            {chatOpen && isAdmin ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {(["screening", "interview", "orientation", "hired", "completed"] as HiringStage[]).map((s) => (
                   <button key={s} type="button" className="btn btn-ghost btn-sm" onClick={() => void advanceStage(s)}>
@@ -381,7 +435,7 @@ export default function DealWorkspacePage() {
                 ))}
               </div>
             ) : chatOpen ? (
-              <span className="t-caption t-secondary">Buyer updates hiring stages</span>
+              <span className="t-caption t-secondary">Timeline updates are managed by platform admins</span>
             ) : null}
           </div>
           <div className="card-body">
@@ -414,21 +468,32 @@ export default function DealWorkspacePage() {
       ) : null}
 
       {tab === "chat" && chatOpen ? (
+        <>
+          {isAdmin ? (
+            <div className="admin-chat-lanes" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <button type="button" className={`btn btn-sm ${adminChatLane === "carrier" ? "btn-primary" : "btn-secondary"}`} onClick={() => setAdminChatLane("carrier")}>Carrier channel</button>
+              <button type="button" className={`btn btn-sm ${adminChatLane === "recruiter" ? "btn-primary" : "btn-secondary"}`} onClick={() => setAdminChatLane("recruiter")}>Recruiter channel</button>
+            </div>
+          ) : null}
         <MessengerPanel
           className="messenger-panel--docked"
-          title={`Recruiting channel — ${deal.companies_buyer?.name} & ${deal.companies_seller?.name}`}
+          title={isAdmin
+            ? adminChatLane === "carrier"
+              ? `Carrier channel — ${deal.companies_buyer?.name ?? "Carrier"}`
+              : `Recruiter channel — ${deal.companies_seller?.name ?? "Recruiter"}`
+            : "Platform coordinator"}
           live
           messages={messages.map((m) => ({
             id: m.id,
             body: m.body,
-            isMine: isOwnDealMessage(m, myCompanyId, deal.buyer_company_id),
-            isSystem: !m.sender_company_id && m.body.startsWith("Contract fully"),
+            isMine: isOwnDealMessage(m, myCompanyId, channelPartyId ?? ""),
+            isSystem: !m.sender_company_id,
             attachmentName: m.attachment_name,
             attachmentPath: m.attachment_path,
             attachmentUrl: m.attachment_url,
             timeLabel: formatMsgTime(m.created_at)
           }))}
-          emptyMessage="No messages yet. Say hello to start the conversation."
+          emptyMessage="Message the platform team. An admin will respond and keep you updated."
           value={chatInput}
           onChange={setChatInput}
           onSend={() => void sendChat()}
@@ -437,6 +502,7 @@ export default function DealWorkspacePage() {
           focusKey={conversationId ?? undefined}
           messagesEndRef={messagesEndRef}
         />
+        </>
       ) : null}
 
       {tab === "documents" && deal?.buyer_signed_at ? (
@@ -481,7 +547,12 @@ export default function DealWorkspacePage() {
                   ? ` — signed by ${deal.seller_signer_name ?? "—"} on ${fmtDate(deal.seller_signed_at)}`
                   : " — pending signature"}
               </p>
-              <p className="t-secondary">Deal {deal.id} · Platform recruiting fee {fmtRecruitingFee(deal.amount)}</p>
+              <p className="t-secondary">
+                Deal {deal.id}
+                {isCarrierParty ? ` · Platform recruiting fee ${fmtRecruitingFee(workspace?.carrierPrice ?? deal.amount)}` : ""}
+                {isRecruiterParty && workspace?.listPrice != null ? ` · Your listing price ${fmtRecruitingFee(workspace.listPrice)}` : ""}
+                {isAdmin ? ` · List ${workspace?.listPrice != null ? fmtRecruitingFee(workspace.listPrice) : "—"} · Carrier ${fmtRecruitingFee(workspace?.carrierPrice ?? deal.amount)}` : ""}
+              </p>
             </div>
 
             {chatOpen ? (

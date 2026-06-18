@@ -57,13 +57,20 @@ export type DealDocumentRow = {
   download_url?: string | null;
 };
 
+export type DealChannelType = "legacy" | "carrier_admin" | "recruiter_admin";
+
 export type DealWorkspace = {
   deal: HiringDealRow;
   driver: Driver | null;
   driverCard: DriverCard | null;
   events: DealEventRow[];
   documents: DealDocumentRow[];
+  /** @deprecated use carrierConversationId / recruiterConversationId */
   conversationId: string | null;
+  carrierConversationId: string | null;
+  recruiterConversationId: string | null;
+  listPrice: number | null;
+  carrierPrice: number;
 };
 
 function dealId(): string {
@@ -164,6 +171,7 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
   if (dealErr) throw dealErr;
 
   await insertDealEvent(id, "contract", "Buyer signed recruiting agreement", `Signed by ${buyerSignerName}`);
+  await ensureCarrierAdminConversation(id, listing.seller_company_id, getActiveCompanyId());
   await supabase.from("driver_listings").update({ status: "hiring", updated_at: now }).eq("id", listingId);
 
   await supabase.from("activities").insert({
@@ -204,57 +212,106 @@ export async function signSellerContract(dealIdValue: string, signerName: string
   if (error) throw error;
 
   await insertDealEvent(dealIdValue, "contract", "Seller signed representation agreement", `Signed by ${signerName}`);
-  await insertDealEvent(dealIdValue, "screening", "Hiring process activated", "Both parties may now communicate and exchange documents.");
+  await insertDealEvent(dealIdValue, "screening", "Hiring process activated", "Platform admin will coordinate next steps with both parties.");
 
-  const conversationId = await ensureDealConversation(dealIdValue);
-  if (conversationId) {
+  const { data: dealRow } = await supabase
+    .from("deals")
+    .select("buyer_company_id, seller_company_id")
+    .eq("id", dealIdValue)
+    .single();
+
+  const carrierConvId = dealRow
+    ? await ensureCarrierAdminConversation(dealIdValue, dealRow.seller_company_id, dealRow.buyer_company_id)
+    : null;
+  const recruiterConvId = dealRow
+    ? await ensureRecruiterAdminConversation(dealIdValue, dealRow.seller_company_id, dealRow.buyer_company_id)
+    : null;
+
+  const now2 = new Date().toISOString();
+  if (carrierConvId) {
     await supabase.from("messages").insert({
-      conversation_id: conversationId,
+      conversation_id: carrierConvId,
       sender_company_id: null,
       direction: "in",
-      body: "Contract fully executed. This channel is now open for recruiting coordination, document exchange, and hiring updates."
+      body: "Your hiring case is active. Message the platform team here — we will keep you updated on recruiting progress."
     });
-    await supabase.from("conversations").update({ last_message_at: now }).eq("id", conversationId);
+    await supabase.from("conversations").update({ last_message_at: now2 }).eq("id", carrierConvId);
+  }
+  if (recruiterConvId) {
+    await supabase.from("messages").insert({
+      conversation_id: recruiterConvId,
+      sender_company_id: null,
+      direction: "in",
+      body: "Your listing is in an active hiring process. Message the platform team here for updates."
+    });
+    await supabase.from("conversations").update({ last_message_at: now2 }).eq("id", recruiterConvId);
   }
 
-  return conversationId ?? "";
+  return recruiterConvId ?? carrierConvId ?? "";
 }
 
-async function ensureDealConversation(dealIdValue: string): Promise<string | null> {
+async function ensureCarrierAdminConversation(
+  dealIdValue: string,
+  sellerCompanyId: string,
+  buyerCompanyId?: string
+): Promise<string | null> {
   if (!supabase) return null;
 
   const { data: existing } = await supabase
     .from("conversations")
     .select("id")
     .eq("deal_id", dealIdValue)
+    .eq("channel_type", "carrier_admin")
     .maybeSingle();
   if (existing?.id) return existing.id;
 
-  const { data: deal } = await supabase
-    .from("deals")
-    .select("buyer_company_id, seller_company_id, listing_id")
-    .eq("id", dealIdValue)
-    .single();
-  if (!deal) return null;
-
-  let subject = `Hiring — Deal ${dealIdValue}`;
-  if (deal.listing_id) {
-    const { data: listing } = await supabase
-      .from("driver_listings")
-      .select("first_name, last_name")
-      .eq("id", deal.listing_id)
-      .maybeSingle();
-    if (listing) subject = `Hiring — ${listing.first_name} ${listing.last_name}`;
+  let buyerId = buyerCompanyId;
+  if (!buyerId) {
+    const { data: deal } = await supabase.from("deals").select("buyer_company_id").eq("id", dealIdValue).single();
+    buyerId = deal?.buyer_company_id;
   }
+  if (!buyerId) return null;
 
   const { data: created, error } = await supabase
     .from("conversations")
     .insert({
-      buyer_company_id: deal.buyer_company_id,
-      seller_company_id: deal.seller_company_id,
+      buyer_company_id: buyerId,
+      seller_company_id: sellerCompanyId,
       deal_id: dealIdValue,
-      subject,
-      is_support: false
+      channel_type: "carrier_admin",
+      subject: "Carrier ↔ Platform",
+      is_support: true
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return created.id;
+}
+
+async function ensureRecruiterAdminConversation(
+  dealIdValue: string,
+  sellerCompanyId: string,
+  buyerCompanyId: string
+): Promise<string | null> {
+  if (!supabase) return null;
+
+  const { data: existing } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("deal_id", dealIdValue)
+    .eq("channel_type", "recruiter_admin")
+    .maybeSingle();
+  if (existing?.id) return existing.id;
+
+  const { data: created, error } = await supabase
+    .from("conversations")
+    .insert({
+      buyer_company_id: sellerCompanyId,
+      seller_company_id: buyerCompanyId,
+      deal_id: dealIdValue,
+      channel_type: "recruiter_admin",
+      subject: "Recruiter ↔ Platform",
+      is_support: true
     })
     .select("id")
     .single();
@@ -269,20 +326,38 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
   if (error) throw error;
   if (!deal) return null;
 
-  const [{ data: companies }, listingResult, { data: events }, { data: documents }, { data: conv }] = await Promise.all([
+  const [{ data: companies }, listingResult, { data: events }, { data: documents }, { data: convRows }] = await Promise.all([
     supabase.from("companies").select("id, name").in("id", [deal.buyer_company_id, deal.seller_company_id]),
     deal.listing_id
       ? supabase.from("driver_listings").select(LISTING_DETAIL_SELECT).eq("id", deal.listing_id).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("deal_events").select("*").eq("deal_id", dealIdValue).order("created_at", { ascending: true }),
     supabase.from("deal_documents").select("*").eq("deal_id", dealIdValue).order("created_at", { ascending: false }),
-    supabase.from("conversations").select("id").eq("deal_id", dealIdValue).maybeSingle()
+    supabase.from("conversations").select("id, channel_type").eq("deal_id", dealIdValue)
   ]);
 
-  let conversationId = conv?.id ?? null;
-  if (!conversationId && deal.buyer_signed_at && deal.seller_signed_at) {
-    conversationId = await ensureDealConversation(dealIdValue);
+  let carrierConversationId =
+    convRows?.find((c) => c.channel_type === "carrier_admin")?.id ?? null;
+  let recruiterConversationId =
+    convRows?.find((c) => c.channel_type === "recruiter_admin")?.id ?? null;
+
+  if (deal.buyer_signed_at) {
+    carrierConversationId = await ensureCarrierAdminConversation(
+      dealIdValue,
+      deal.seller_company_id,
+      deal.buyer_company_id
+    );
   }
+  if (deal.buyer_signed_at && deal.seller_signed_at) {
+    recruiterConversationId = await ensureRecruiterAdminConversation(
+      dealIdValue,
+      deal.seller_company_id,
+      deal.buyer_company_id
+    );
+  }
+
+  const legacyId = convRows?.find((c) => c.channel_type === "legacy" || !c.channel_type)?.id ?? null;
+  const conversationId = carrierConversationId ?? recruiterConversationId ?? legacyId;
 
   const companyMap = new Map((companies ?? []).map((c) => [c.id, c]));
   const listing = listingResult.data;
@@ -318,20 +393,20 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
     driverCard: listingCard,
     events: events ?? [],
     documents: documentsWithUrls,
-    conversationId
+    conversationId,
+    carrierConversationId,
+    recruiterConversationId,
+    listPrice: listing?.price ?? null,
+    carrierPrice: deal.amount
   };
 }
 
-export async function advanceHiringStage(
+export async function advanceHiringStageAsAdmin(
   dealIdValue: string,
   stage: HiringStage,
-  buyerCompanyId: string
+  adminNote = ""
 ): Promise<void> {
   if (!supabase) return;
-  const companyId = getActiveCompanyId();
-  if (companyId !== buyerCompanyId) {
-    throw new Error("Only the buyer can update hiring stages");
-  }
   const label = stage.charAt(0).toUpperCase() + stage.slice(1);
   const statusMap: Record<string, string> = {
     screening: "Hiring Active",
@@ -347,7 +422,15 @@ export async function advanceHiringStage(
     ...(stage === "completed" ? { escrow_released: true } : {})
   }).eq("id", dealIdValue);
   if (error) throw error;
-  await insertDealEvent(dealIdValue, stage, `Stage updated: ${label}`, "");
+  await insertDealEvent(dealIdValue, stage, `Platform updated stage: ${label}`, adminNote);
+}
+
+export async function advanceHiringStage(
+  _dealIdValue: string,
+  _stage: HiringStage,
+  _buyerCompanyId: string
+): Promise<void> {
+  throw new Error("Only platform admins can update hiring stages");
 }
 
 export async function recordDealDocument(

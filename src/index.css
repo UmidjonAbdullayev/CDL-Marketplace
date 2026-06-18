@@ -1790,6 +1790,7 @@ tbody tr:hover td { background: var(--bg); }
 .admin-pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
 .admin-pricing-grid .lbl { display: block; font-size: 11px; color: var(--gray-500); text-transform: uppercase; margin-bottom: 4px; }
 .approval-row-active { background: var(--blue-light); }
+.admin-chat-filters { padding-top: 0; border-bottom: 1px solid var(--border); }
 @media (max-width: 1024px) {
   .admin-approval-layout { grid-template-columns: 1fr; }
   .admin-review-panel { position: static; }
