@@ -2721,3 +2721,39 @@ tr.row-selected td { background: var(--primary-light); }
 }
 .upload-zone i { width: var(--icon-xl); height: var(--icon-xl); color: var(--text-secondary); margin-bottom: var(--s3); }
 .toast i { width: var(--icon); height: var(--icon); flex-shrink: 0; }
+
+.company-reviews-panel { display: flex; flex-direction: column; gap: 12px; }
+.company-reviews-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.company-reviews-rating { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.company-reviews-list { display: flex; flex-direction: column; gap: 10px; }
+.company-review-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 12px;
+  background: var(--gray-50);
+}
+.company-review-item p { margin: 6px 0; font-size: 13px; line-height: 1.5; color: var(--gray-700); }
+.company-review-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.company-reviews-empty { font-size: 13px; margin: 0; }
+.contract-reviews-block { border-bottom: 1px solid var(--border); }
+.dispute-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  min-height: 120px;
+}
+.dispute-evidence-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 12px;
+}
+.messenger-file-input { display: none; }

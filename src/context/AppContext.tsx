@@ -13,9 +13,8 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchCompanyById } from "../services/company";
 import { buildSessionAccount, fetchRegistrationById } from "../services/registration";
+import { DisputeForm } from "../components/DisputeForm";
 import {
-  createDispute,
-  fetchDealsForSelect,
   fetchListingCardById,
   fetchPurchasedIds,
   fetchReservedIds,
@@ -312,72 +311,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const openDisputeModal = useCallback((presetDealId?: string) => {
-    void fetchDealsForSelect().then((deals) => {
-      const dealIds = new Set(deals.map((d) => d.id));
-      let dealId = presetDealId && (dealIds.has(presetDealId) || presetDealId)
-        ? presetDealId
-        : deals[0]?.id ?? presetDealId ?? "";
-      let reason = "Invalid phone";
-      let description = "";
-      openModal(
-        "Open Dispute",
-        <>
-          <div className="form-group">
-            <label>Deal ID</label>
-            <select defaultValue={dealId} onChange={(e) => { dealId = e.target.value; }}>
-              {deals.length === 0 && presetDealId ? (
-                <option value={presetDealId}>{presetDealId}</option>
-              ) : null}
-              {deals.length === 0 && !presetDealId ? (
-                <option value="">No eligible deals</option>
-              ) : null}
-              {deals.map((d) => (
-                <option key={d.id} value={d.id}>{d.id}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Reason</label>
-            <select defaultValue={reason} onChange={(e) => { reason = e.target.value; }}>
-              <option>Invalid phone</option>
-              <option>Driver not interested</option>
-              <option>Duplicate lead</option>
-              <option>Missing consent</option>
-              <option>Fake listing</option>
-              <option>Other</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Description</label>
-            <textarea rows={3} placeholder="Describe the issue..." onChange={(e) => { description = e.target.value; }} />
-          </div>
-          <div className="upload-zone" style={{ padding: "var(--s5)" }} onClick={() => showToast("Evidence uploaded", "success")}>
-            <span className="t-body">Upload Evidence (screenshots, call logs)</span>
-          </div>
-        </>,
-        <>
-          <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
-          <button
-            className="btn btn-danger"
-            onClick={() => {
-              if (!dealId) {
-                showToast("Select a deal first", "error");
-                return;
-              }
-              void createDispute(dealId, reason, description)
-                .then(() => {
-                  closeModal();
-                  invalidateDataViews(["disputes", "dashboard"]);
-                  showToast("Dispute filed - admin will review within 48hrs", "success");
-                })
-                .catch(() => showToast("Failed to file dispute", "error"));
-            }}
-          >
-            Submit Dispute
-          </button>
-        </>
-      );
-    });
+    openModal(
+      "Open Dispute",
+      <DisputeForm
+        presetDealId={presetDealId}
+        showToast={showToast}
+        onCancel={closeModal}
+        onSuccess={() => {
+          closeModal();
+          invalidateDataViews(["disputes", "dashboard"]);
+        }}
+      />
+    );
   }, [closeModal, openModal, showToast]);
 
   const value = useMemo<AppContextValue>(

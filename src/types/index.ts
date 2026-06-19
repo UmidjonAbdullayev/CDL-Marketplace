@@ -53,6 +53,7 @@ export interface Driver {
   cdlNum: string;
   docs: string[];
   notes: string;
+  sellerCompanyId?: string;
 }
 
 export interface Paginated<T> {

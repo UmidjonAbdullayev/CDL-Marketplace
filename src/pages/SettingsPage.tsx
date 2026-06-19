@@ -38,7 +38,14 @@ export default function SettingsPage() {
           <label className="filter-check"><input type="checkbox" defaultChecked /> Message notifications</label>
           <label className="filter-check"><input type="checkbox" /> Marketing emails</label>
           <hr style={{ border: "none", borderTop: "1px solid var(--gray-200)", margin: "16px 0" }} />
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => showToast("CDL Score CRM connected", "success")}><CheckCircle2 className="icon-sm" /> CDL Score CRM</button>
+          <a
+            className="btn btn-ghost btn-sm"
+            href="https://cdl-score-crm.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <CheckCircle2 className="icon-sm" /> Open CDL Score CRM
+          </a>
         </div></div>
       </div>
     </div>

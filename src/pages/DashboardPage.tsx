@@ -333,9 +333,13 @@ export default function DashboardPage() {
             <div className="dash-card-trio-scroll">
               <div className="category-list">
                 <div className="category-head"><span>Category</span><span>Volume</span><span>Share</span></div>
-                {categories.map((c) => (
-                  <CategoryRow key={c.id} name={c.name} listings={String(c.listings_count)} pct={c.sell_rate} cls={c.rate_class as "high" | "mid" | "low"} />
-                ))}
+                {categories.length === 0 ? (
+                  <p className="t-secondary" style={{ padding: "16px 14px" }}>No active listings yet — stats reflect live marketplace data.</p>
+                ) : (
+                  categories.map((c) => (
+                    <CategoryRow key={c.id} name={c.name} listings={String(c.listings_count)} pct={c.sell_rate} cls={c.rate_class as "high" | "mid" | "low"} />
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -369,22 +373,27 @@ export default function DashboardPage() {
           <div className="card-header"><h3>Top Sellers This Month</h3></div>
           <div className="card-body card-body--flush">
             <div className="dash-list">
-              {sellers.map((s) => {
-                const company = Array.isArray(s.companies) ? s.companies[0] : s.companies;
-                return (
-                  <SellerListItem
-                    key={s.id}
-                    rank={String(s.rank_position)}
-                    rankCls={s.rank_class || undefined}
-                    initials={sellerInitials(company?.name ?? "")}
-                    name={company?.name ?? "—"}
-                    rating={String(company?.rating ?? 4)}
-                    sold={String(s.sold_count)}
-                    rate={`${s.success_rate}%`}
-                    onViewReviews={() => showToast(`Opening reviews for ${company?.name ?? "seller"}`, "success")}
-                  />
-                );
-              })}
+              {sellers.length === 0 ? (
+                <p className="t-secondary" style={{ padding: 16 }}>No completed deals this month yet.</p>
+              ) : (
+                sellers.map((s) => {
+                  const company = Array.isArray(s.companies) ? s.companies[0] : s.companies;
+                  const companyId = s.company_id ?? s.id;
+                  return (
+                    <SellerListItem
+                      key={s.id}
+                      rank={String(s.rank_position)}
+                      rankCls={s.rank_class || undefined}
+                      initials={sellerInitials(company?.name ?? "")}
+                      name={company?.name ?? "—"}
+                      rating={String(company?.rating ?? 4)}
+                      sold={String(s.sold_count)}
+                      rate={`${s.success_rate}%`}
+                      onViewReviews={() => navigate(`/company/${companyId}/reviews`)}
+                    />
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

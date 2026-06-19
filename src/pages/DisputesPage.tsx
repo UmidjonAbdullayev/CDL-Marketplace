@@ -3,6 +3,7 @@ import { useExchangeData } from "../context/ExchangeDataContext";
 import { PageHeader } from "../lib/badges";
 import { Pagination } from "../components/ui/Pagination";
 import { DEFAULT_PAGE_SIZE, resolveDispute } from "../services/marketplace";
+import { getAttachmentViewUrl, openAttachment } from "../services/chatAttachments";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -39,16 +40,34 @@ export default function DisputesPage() {
         actions={<button className="btn btn-primary" onClick={() => { openDisputeModal(); window.setTimeout(() => refreshDisputes(true), 500); }}>Open Dispute</button>}
       />
       {refreshing ? <div className="t-caption t-secondary" style={{ marginBottom: 8 }}>Updating...</div> : null}
-      <div className="card"><div className="table-wrap"><table><thead><tr><th>Dispute ID</th><th>Deal</th><th>Reason</th><th>Filed By</th><th>Date</th><th>Admin Status</th><th>Resolution</th><th>Actions</th></tr></thead><tbody>
+      <div className="card"><div className="table-wrap"><table><thead><tr><th>Dispute ID</th><th>Deal</th><th>Reason</th><th>Evidence</th><th>Filed By</th><th>Date</th><th>Admin Status</th><th>Resolution</th><th>Actions</th></tr></thead><tbody>
         {loading && rows.length === 0 ? (
-          <tr><td colSpan={8} className="t-secondary">Loading disputes...</td></tr>
+          <tr><td colSpan={9} className="t-secondary">Loading disputes...</td></tr>
         ) : null}
         {!loading && rows.length === 0 ? (
-          <tr><td colSpan={8} className="t-secondary">No disputes filed.</td></tr>
+          <tr><td colSpan={9} className="t-secondary">No disputes filed.</td></tr>
         ) : null}
         {rows.map((r) => (
           <tr key={r.id} id={r.id.toLowerCase()}>
             <td>{r.id}</td><td>{r.deal_id}</td><td>{r.reason}</td>
+            <td>
+              {r.evidence_path && r.evidence_name ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    const url = getAttachmentViewUrl(r.evidence_path!);
+                    if (url) {
+                      window.open(url, "_blank", "noopener,noreferrer");
+                    } else {
+                      void openAttachment(r.evidence_path!, r.evidence_name!).catch(() => showToast("Could not open evidence file", "error"));
+                    }
+                  }}
+                >
+                  {r.evidence_name}
+                </button>
+              ) : "—"}
+            </td>
             <td>{r.companies?.name ?? "—"}</td><td>{formatDate(r.filed_at)}</td>
             <td><span className={`badge ${r.admin_status === "Resolved" ? "badge-green" : "badge-yellow"} admin-status`}>{r.admin_status}</span></td>
             <td><span className={`badge ${r.resolution === "Pending" ? "badge-gray" : "badge-green"} resolution-status`}>{r.resolution}</span></td>

@@ -8,6 +8,7 @@ import { BUYER_CONTRACT_CLAUSES } from "../lib/hiring";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { findActiveDealForListing, fetchListingForContract, startHiringProcess } from "../services/hiring";
+import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 import type { DriverCard } from "../types";
 
 export default function ContractPage() {
@@ -18,6 +19,7 @@ export default function ContractPage() {
   const id = Number(listingId);
 
   const [driver, setDriver] = useState<DriverCard | null>(null);
+  const [sellerCompanyId, setSellerCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [signerName, setSignerName] = useState(sessionUser?.name ?? "");
   const [agreed, setAgreed] = useState(false);
@@ -42,6 +44,7 @@ export default function ContractPage() {
           }
           const result = await fetchListingForContract(id);
           setDriver(result?.card ?? null);
+          setSellerCompanyId(result?.sellerId ?? null);
         } else {
           const { DRIVERS } = await import("../data/drivers");
           const d = DRIVERS.find((x) => x.id === id);
@@ -170,6 +173,23 @@ export default function ContractPage() {
         </div>
 
         <div className="card contract-sign">
+          {sellerCompanyId ? (
+            <div className="contract-reviews-block">
+              <div className="card-header" style={{ borderBottom: "1px solid var(--border)" }}>
+                <h3>Seller Reviews</h3>
+              </div>
+              <div className="card-body">
+                <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
+                  Review partner feedback before signing this recruiting agreement.
+                </p>
+                <CompanyReviewsPanel
+                  companyId={sellerCompanyId}
+                  compact
+                  onViewAll={() => navigate(`/company/${sellerCompanyId}/reviews`)}
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="card-header"><h3>Buyer Signature</h3></div>
           <div className="card-body">
             <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>

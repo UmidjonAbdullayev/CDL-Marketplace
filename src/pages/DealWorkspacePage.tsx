@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MessengerPanel } from "../components/chat/MessengerPanel";
+import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 import { useApp } from "../context/AppContext";
 import { isPlatformStaff } from "../lib/account-capabilities";
 import { ScoreBadge, VerifiedBadge } from "../lib/badges";
@@ -121,6 +122,7 @@ export default function DealWorkspacePage() {
 
   const currentStageIdx = stageIndex(deal?.hiring_stage ?? "contract");
   const needsSellerSign = Boolean(deal && !deal.seller_signed_at && deal.buyer_signed_at);
+  const counterpartyCompanyId = isBuyerParty ? deal?.seller_company_id : deal?.buyer_company_id;
 
   const recruitmentFee = useMemo(() => {
     const listPrice = workspace?.listPrice ?? null;
@@ -381,6 +383,15 @@ export default function DealWorkspacePage() {
               Buyer signed on {deal.buyer_signed_at ? fmtDate(deal.buyer_signed_at) : "—"} by {deal.buyer_signer_name}.
               Countersign to open platform chat and document sharing.
             </p>
+            {deal.buyer_company_id ? (
+              <div style={{ marginBottom: 16 }}>
+                <CompanyReviewsPanel
+                  companyId={deal.buyer_company_id}
+                  compact
+                  onViewAll={() => navigate(`/company/${deal.buyer_company_id}/reviews`)}
+                />
+              </div>
+            ) : null}
             <ul className="contract-clauses-compact">
               {SELLER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}
             </ul>
@@ -546,6 +557,16 @@ export default function DealWorkspacePage() {
                     <div>{deal.buyer_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Buyer signed</div>
                     <div>{deal.seller_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Seller signed</div>
                   </div>
+                  {counterpartyCompanyId ? (
+                    <div style={{ marginTop: 16 }}>
+                      <h4>Partner reviews</h4>
+                      <CompanyReviewsPanel
+                        companyId={counterpartyCompanyId}
+                        compact
+                        onViewAll={() => navigate(`/company/${counterpartyCompanyId}/reviews`)}
+                      />
+                    </div>
+                  ) : null}
                   <h4 style={{ marginTop: 20 }}>Buyer agreement clauses</h4>
                   <ul className="contract-clauses-compact">{BUYER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
                   {deal.seller_signed_at ? (

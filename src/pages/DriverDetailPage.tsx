@@ -6,6 +6,7 @@ import { canStartHiring } from "../lib/account-capabilities";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
+import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 
 export default function DriverDetailPage() {
   const navigate = useNavigate();
@@ -110,6 +111,18 @@ export default function DriverDetailPage() {
               <div className="escrow-note t-caption t-secondary">Review and sign the recruiting agreement before messaging or document exchange.</div>
             </div>
           </div>
+          {driver.sellerCompanyId ? (
+            <div className="card">
+              <div className="card-header"><h3>Seller Reviews</h3></div>
+              <div className="card-body">
+                <CompanyReviewsPanel
+                  companyId={driver.sellerCompanyId}
+                  compact
+                  onViewAll={() => navigate(`/company/${driver.sellerCompanyId}/reviews`)}
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="card">
             <div className="card-header"><h3>Listing Details</h3></div>
             <div className="card-body t-secondary" style={{ fontSize: 13, lineHeight: 1.8 }}>

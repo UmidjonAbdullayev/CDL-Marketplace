@@ -14,6 +14,7 @@ import MessagesPage from "./pages/MessagesPage";
 import ProfilePage from "./pages/ProfilePage";
 import PricingPage from "./pages/PricingPage";
 import CompliancePage from "./pages/CompliancePage";
+import CompanyReviewsPage from "./pages/CompanyReviewsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
 import ContractPage from "./pages/ContractPage";
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
+            <Route path="/company/:companyId/reviews" element={<CompanyReviewsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route element={<AdminGuard />}>
               <Route path="/admin" element={<AdminPage />} />

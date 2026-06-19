@@ -19,26 +19,30 @@ export default function SellPage() {
   const [step, setStep] = useState(1);
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [first, setFirst] = useState("Marcus");
-  const [last, setLast] = useState("Johnson");
-  const [state, setState] = useState("TX");
-  const [phone, setPhone] = useState("(555) 555-0100");
-  const [email, setEmail] = useState("driver@email.com");
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+  const [state, setState] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [cdlClass, setCdlClass] = useState("Class A");
-  const [cdlNumber, setCdlNumber] = useState("TX-0000000");
-  const [yearsExp, setYearsExp] = useState(5);
+  const [cdlNumber, setCdlNumber] = useState("");
+  const [yearsExp, setYearsExp] = useState<number | "">("");
   const [scoreFlag, setScoreFlag] = useState<ScoreFlag>("green");
-  const [endorsements, setEndorsements] = useState("Hazmat, Tanker");
-  const [availDate, setAvailDate] = useState("2026-06-20");
+  const [endorsements, setEndorsements] = useState("");
+  const [availDate, setAvailDate] = useState("");
   const [equipment, setEquipment] = useState("Dry Van");
   const [routePref, setRoutePref] = useState("OTR");
   const [driverType, setDriverType] = useState("Owner Operator");
   const [notes, setNotes] = useState("");
-  const [price, setPrice] = useState(350);
+  const [price, setPrice] = useState<number | "">("");
   const priceCap = useMemo(() => maxRecruiterPrice(driverType), [driverType]);
 
   const publish = async () => {
-    const capError = validateRecruiterListPrice(price, driverType);
+    if (!first.trim() || !last.trim() || !state || !phone.trim() || !email.trim() || !cdlNumber.trim() || yearsExp === "" || !availDate || price === "") {
+      showToast("Complete all required fields before publishing", "error");
+      return;
+    }
+    const capError = validateRecruiterListPrice(Number(price), driverType);
     if (capError) {
       showToast(capError, "error");
       return;
@@ -46,21 +50,21 @@ export default function SellPage() {
     setSubmitting(true);
     try {
       await createListing({
-        firstName: first,
-        lastName: last,
+        firstName: first.trim(),
+        lastName: last.trim(),
         state,
-        phone,
-        email,
+        phone: phone.trim(),
+        email: email.trim(),
         cdlClass,
-        cdlNumber,
-        yearsExp,
+        cdlNumber: cdlNumber.trim(),
+        yearsExp: Number(yearsExp),
         scoreFlag,
         endorsements: endorsements.split(",").map((e) => e.trim()).filter(Boolean),
         availableDate: availDate,
         equipment,
         routePref,
-        notes,
-        price,
+        notes: notes.trim(),
+        price: Number(price),
         driverType
       });
       invalidateDataViews(["my-listings", "admin", "dashboard", "marketplace"]);
@@ -95,18 +99,19 @@ export default function SellPage() {
         <div className={`form-step ${step === 1 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 1: Driver Basic Info</h3>
           <div className="form-row">
-            <div className="form-group"><label>First Name *</label><input value={first} onChange={(e) => setFirst(e.target.value)} /></div>
-            <div className="form-group"><label>Last Name *</label><input value={last} onChange={(e) => setLast(e.target.value)} /></div>
+            <div className="form-group"><label>First Name *</label><input value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First name" /></div>
+            <div className="form-group"><label>Last Name *</label><input value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last name" /></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label>State *</label>
               <select value={state} onChange={(e) => setState(e.target.value)}>
+                <option value="">Select state</option>
                 {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Phone *</label><input value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+            <div className="form-group"><label>Phone *</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" /></div>
           </div>
-          <div className="form-group"><label>Email *</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div className="form-group"><label>Email *</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" /></div>
         </div>
         <div className={`form-step ${step === 2 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 2: Qualification Details</h3>
@@ -114,10 +119,10 @@ export default function SellPage() {
             <div className="form-group"><label>CDL Class *</label>
               <select value={cdlClass} onChange={(e) => setCdlClass(e.target.value)}><option>Class A</option><option>Class B</option><option>Class C</option></select>
             </div>
-            <div className="form-group"><label>CDL Number *</label><input value={cdlNumber} onChange={(e) => setCdlNumber(e.target.value)} /></div>
+            <div className="form-group"><label>CDL Number *</label><input value={cdlNumber} onChange={(e) => setCdlNumber(e.target.value)} placeholder="CDL number" /></div>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>Years Experience *</label><input type="number" min={0} value={yearsExp} onChange={(e) => setYearsExp(Number(e.target.value))} /></div>
+            <div className="form-group"><label>Years Experience *</label><input type="number" min={0} value={yearsExp} onChange={(e) => setYearsExp(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Years" /></div>
             <div className="form-group"><label>CDL Score Status</label>
               <select value={scoreFlag} onChange={(e) => setScoreFlag(e.target.value as ScoreFlag)}>
                 <option value="green">Green — Clean Record</option>
@@ -153,7 +158,6 @@ export default function SellPage() {
             <div className="t-body">Drag & drop files here or click to browse</div>
             <div className="t-caption" style={{ marginTop: "var(--s2)" }}>CDL Copy, Medical Certificate, MVR Report, Employment History</div>
           </div>
-          <div style={{ marginTop: 16, fontSize: 13, color: "var(--gray-500)" }}>Uploaded: <span className="badge badge-gray">CDL Copy (demo)</span></div>
         </div>
         <div className={`form-step ${step === 5 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 5: Consent Confirmation</h3>
@@ -174,7 +178,8 @@ export default function SellPage() {
                 value={price}
                 min={50}
                 max={priceCap}
-                onChange={(e) => setPrice(Math.min(priceCap, Math.max(50, Number(e.target.value) || 50)))}
+                placeholder="Listing price"
+                onChange={(e) => setPrice(e.target.value === "" ? "" : Math.min(priceCap, Math.max(50, Number(e.target.value) || 50)))}
               />
               <span className="t-caption t-secondary">Max {fmtPrice(priceCap)} for {driverType}</span>
             </div>
@@ -184,10 +189,10 @@ export default function SellPage() {
         <div className={`form-step ${step === 7 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 7: Review & Publish</h3>
           <div style={{ fontSize: 13, lineHeight: 2, background: "var(--gray-50)", padding: 20, borderRadius: 8 }}>
-            <strong>Driver:</strong> {first} {last}<br />
+            <strong>Driver:</strong> {first || "—"} {last || ""}<br />
             <strong>Driver Type:</strong> {driverType}<br />
-            <strong>Listing Price:</strong> {fmtPrice(price)}<br />
-            <strong>Consent:</strong> Confirmed<br />
+            <strong>Listing Price:</strong> {price !== "" ? fmtPrice(Number(price)) : "—"}<br />
+            <strong>Consent:</strong> {consent ? "Confirmed" : "Pending"}<br />
             <strong>Status:</strong> Pending admin approval
           </div>
         </div>

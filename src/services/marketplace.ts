@@ -110,6 +110,7 @@ export function rowToCard(row: ListingCardRowWithHot, viewer: MarketplaceViewer 
 
 export function rowToDriver(row: ListingDetailRow, viewer: MarketplaceViewer = "carrier"): Driver {
   const card = rowToCard(row, viewer);
+  const detail = row as ListingDetailRow & { seller_company_id?: string };
   return {
     ...card,
     endorse: row.endorsements ?? [],
@@ -117,7 +118,8 @@ export function rowToDriver(row: ListingDetailRow, viewer: MarketplaceViewer = "
     email: row.email,
     cdlNum: row.cdl_number,
     docs: row.documents ?? [],
-    notes: row.notes ?? ""
+    notes: row.notes ?? "",
+    sellerCompanyId: detail.seller_company_id
   };
 }
 
@@ -512,6 +514,8 @@ export type DisputeRow = {
   admin_status: string;
   resolution: string;
   filed_at: string;
+  evidence_name: string | null;
+  evidence_path: string | null;
   companies: { name: string } | null;
 };
 
@@ -526,7 +530,7 @@ export async function fetchDisputesPage(
   const companyId = getActiveCompanyId();
   const { data: disputes, error, count } = await supabase
     .from("disputes")
-    .select("id, deal_id, reason, description, admin_status, resolution, filed_at, filed_by_company_id", { count: "exact" })
+    .select("id, deal_id, reason, description, admin_status, resolution, filed_at, filed_by_company_id, evidence_name, evidence_path", { count: "exact" })
     .eq("filed_by_company_id", companyId)
     .order("filed_at", { ascending: false })
     .range(from, to);
@@ -537,8 +541,16 @@ export async function fetchDisputesPage(
   const { data: companies } = await supabase.from("companies").select("id, name").in("id", companyIds);
   const companyMap = new Map((companies ?? []).map((c) => [c.id, c]));
 
-  const items = disputes.map((d) => ({
-    ...d,
+  const items: DisputeRow[] = disputes.map((d) => ({
+    id: d.id,
+    deal_id: d.deal_id,
+    reason: d.reason,
+    description: d.description,
+    admin_status: d.admin_status,
+    resolution: d.resolution,
+    filed_at: d.filed_at,
+    evidence_name: d.evidence_name ?? null,
+    evidence_path: d.evidence_path ?? null,
     companies: companyMap.get(d.filed_by_company_id) ? { name: companyMap.get(d.filed_by_company_id)!.name } : null
   }));
   return toPaginated(items, count, page, pageSize);
@@ -557,7 +569,12 @@ export async function fetchOpenDisputeCount(): Promise<number> {
   return count ?? 0;
 }
 
-export async function createDispute(dealId: string, reason: string, description: string): Promise<void> {
+export async function createDispute(
+  dealId: string,
+  reason: string,
+  description: string,
+  evidence?: { name: string; path: string }
+): Promise<void> {
   if (!supabase) throw new Error("Supabase not configured");
   const id = `DSP-${Date.now().toString().slice(-4)}`;
   const { error } = await supabase.from("disputes").insert({
@@ -565,7 +582,9 @@ export async function createDispute(dealId: string, reason: string, description:
     deal_id: dealId,
     reason,
     description,
-    filed_by_company_id: getActiveCompanyId()
+    filed_by_company_id: getActiveCompanyId(),
+    evidence_name: evidence?.name ?? null,
+    evidence_path: evidence?.path ?? null
   });
   if (error) throw error;
 }
@@ -965,19 +984,93 @@ export async function fetchFollowUps() {
 
 export async function fetchCategoryStats() {
   if (!supabase) return [];
-  const { data, error } = await supabase.from("category_stats").select("*").order("listings_count", { ascending: false });
+
+  const { data, error } = await supabase
+    .from("driver_listings")
+    .select("driver_type, price")
+    .in("status", ["active", "reserved", "pending"]);
   if (error) throw error;
-  return data ?? [];
+  if (!data?.length) return [];
+
+  const totals = new Map<string, { count: number; priceSum: number }>();
+  for (const row of data) {
+    const key = row.driver_type || "Other";
+    const entry = totals.get(key) ?? { count: 0, priceSum: 0 };
+    entry.count += 1;
+    entry.priceSum += row.price ?? 0;
+    totals.set(key, entry);
+  }
+
+  const grandTotal = data.length;
+  return [...totals.entries()]
+    .map(([name, stats], index) => {
+      const share = Math.round((stats.count / grandTotal) * 100);
+      const rate_class = share >= 35 ? "high" : share >= 18 ? "mid" : "low";
+      return {
+        id: `cat-${index}`,
+        name,
+        listings_count: stats.count,
+        avg_price: stats.count ? Math.round(stats.priceSum / stats.count) : 0,
+        sell_rate: share,
+        rate_class
+      };
+    })
+    .sort((a, b) => b.listings_count - a.listings_count);
 }
 
 export async function fetchSellerStats() {
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("seller_stats")
-    .select(`id, rank_position, sold_count, success_rate, revenue, rank_class, companies (name, rating)`)
-    .order("rank_position");
+
+  const since = new Date();
+  since.setDate(1);
+  since.setHours(0, 0, 0, 0);
+  const sinceIso = since.toISOString();
+
+  const { data: deals, error } = await supabase
+    .from("deals")
+    .select("seller_company_id, amount, status, created_at")
+    .gte("created_at", sinceIso);
   if (error) throw error;
-  return data ?? [];
+  if (!deals?.length) return [];
+
+  const bySeller = new Map<string, { sold: number; completed: number; revenue: number }>();
+  for (const deal of deals) {
+    const entry = bySeller.get(deal.seller_company_id) ?? { sold: 0, completed: 0, revenue: 0 };
+    entry.sold += 1;
+    if (deal.status === "Completed" || deal.status === "Hired Confirmed") {
+      entry.completed += 1;
+      entry.revenue += deal.amount ?? 0;
+    }
+    bySeller.set(deal.seller_company_id, entry);
+  }
+
+  const sellerIds = [...bySeller.keys()];
+  const { data: companies } = await supabase
+    .from("companies")
+    .select("id, name, rating")
+    .in("id", sellerIds);
+
+  const companyMap = new Map((companies ?? []).map((c) => [c.id, c]));
+
+  return [...bySeller.entries()]
+    .map(([companyId, stats], index) => {
+      const company = companyMap.get(companyId);
+      const successRate = stats.sold ? Math.round((stats.completed / stats.sold) * 100) : 0;
+      const rank_class = index === 0 ? "gold" : index === 1 ? "silver" : index === 2 ? "bronze" : "";
+      return {
+        id: companyId,
+        company_id: companyId,
+        rank_position: index + 1,
+        sold_count: stats.sold,
+        success_rate: successRate,
+        revenue: stats.revenue,
+        rank_class,
+        companies: company ? { name: company.name, rating: company.rating } : { name: "—", rating: 4 }
+      };
+    })
+    .sort((a, b) => b.sold_count - a.sold_count || b.revenue - a.revenue)
+    .slice(0, 10)
+    .map((row, index) => ({ ...row, rank_position: index + 1 }));
 }
 
 export async function fetchDashboardStats() {
