@@ -2778,7 +2778,11 @@ tr.row-selected td { background: var(--primary-light); }
   padding: 6px 0;
   color: var(--gray-700);
 }
-.messenger-messages-end {
-  height: 1px;
-  flex-shrink: 0;
+.limits-default-list { margin: 8px 0 0; padding-left: 20px; line-height: 1.6; }
+.platform-limit-banner {
+  background: var(--blue-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 10px 14px;
+  margin-bottom: 16px;
 }

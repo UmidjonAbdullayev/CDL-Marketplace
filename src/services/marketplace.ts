@@ -5,6 +5,7 @@ import type { Driver, DriverCard, HotListing, Paginated, ScoreFlag } from "../ty
 import { computeListingPricing, displayPriceForViewer, type MarketplaceViewer, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { enrichMessagesWithAttachmentUrls, uploadChatAttachment } from "./chatAttachments";
 import { autoAssignListing } from "./platformAdmin";
+import { assertCanCreateListing } from "./platformLimits";
 
 const NEW_LISTING_MS = 7 * 86400000;
 
@@ -915,6 +916,8 @@ export async function createListing(input: NewListingInput): Promise<number> {
   if (!supabase) throw new Error("Supabase not configured");
   const capError = validateRecruiterListPrice(input.price, input.driverType);
   if (capError) throw new Error(capError);
+
+  await assertCanCreateListing();
 
   const pricing = computeListingPricing(input.price, 0);
 

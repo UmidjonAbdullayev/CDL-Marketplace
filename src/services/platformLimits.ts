@@ -1,0 +1,272 @@
+import { getActiveCompanyId } from "../lib/activeCompany";
+import { supabase } from "../lib/supabase";
+
+/** Default caps before any completed deal (build trust). */
+export const STARTER_LIMITS = {
+  carrierActiveHires: 1,
+  recruiterActiveListings: 3
+} as const;
+
+/** Caps after at least one completed deal on the platform. */
+export const TRUSTED_LIMITS = {
+  carrierActiveHires: 5,
+  recruiterActiveListings: 10
+} as const;
+
+export type LimitTier = "starter" | "trusted" | "custom";
+
+export type CompanyLimitSnapshot = {
+  companyId: string;
+  role: "carrier" | "recruiter";
+  tier: LimitTier;
+  limit: number;
+  used: number;
+  completedDeals: number;
+  customMaxHires: number | null;
+  customMaxListings: number | null;
+};
+
+export class PlatformLimitError extends Error {
+  readonly code = "PLATFORM_LIMIT";
+  readonly snapshot: CompanyLimitSnapshot;
+
+  constructor(message: string, snapshot: CompanyLimitSnapshot) {
+    super(message);
+    this.name = "PlatformLimitError";
+    this.snapshot = snapshot;
+  }
+}
+
+function isActiveDeal(status: string, hiringStage: string): boolean {
+  return status !== "Completed" && hiringStage !== "completed";
+}
+
+function isCompletedDeal(status: string): boolean {
+  return status === "Completed" || status === "Hired Confirmed";
+}
+
+export async function countCompletedDeals(
+  companyId: string,
+  role: "buyer" | "seller"
+): Promise<number> {
+  if (!supabase) return 0;
+  const column = role === "buyer" ? "buyer_company_id" : "seller_company_id";
+  const { count, error } = await supabase
+    .from("deals")
+    .select("id", { count: "exact", head: true })
+    .eq(column, companyId)
+    .in("status", ["Completed", "Hired Confirmed"]);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function countActiveHires(buyerCompanyId: string): Promise<number> {
+  if (!supabase) return 0;
+  const { data, error } = await supabase
+    .from("deals")
+    .select("status, hiring_stage")
+    .eq("buyer_company_id", buyerCompanyId);
+  if (error) throw error;
+  return (data ?? []).filter((d) => isActiveDeal(d.status, d.hiring_stage)).length;
+}
+
+export async function countActiveListings(sellerCompanyId: string): Promise<number> {
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from("driver_listings")
+    .select("id", { count: "exact", head: true })
+    .eq("seller_company_id", sellerCompanyId)
+    .in("status", ["pending", "active", "reserved", "hiring", "paused"]);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function fetchCompanyLimitOverrides(companyId: string): Promise<{
+  max_active_hires: number | null;
+  max_active_listings: number | null;
+  company_type: string;
+}> {
+  if (!supabase) {
+    return { max_active_hires: null, max_active_listings: null, company_type: "buyer" };
+  }
+  const { data, error } = await supabase
+    .from("companies")
+    .select("max_active_hires, max_active_listings, company_type")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    max_active_hires: data?.max_active_hires ?? null,
+    max_active_listings: data?.max_active_listings ?? null,
+    company_type: data?.company_type ?? "buyer"
+  };
+}
+
+function defaultHireLimit(completedAsBuyer: number, custom: number | null): { limit: number; tier: LimitTier } {
+  if (custom != null && custom >= 0) return { limit: custom, tier: "custom" };
+  if (completedAsBuyer >= 1) return { limit: TRUSTED_LIMITS.carrierActiveHires, tier: "trusted" };
+  return { limit: STARTER_LIMITS.carrierActiveHires, tier: "starter" };
+}
+
+function defaultListingLimit(completedAsSeller: number, custom: number | null): { limit: number; tier: LimitTier } {
+  if (custom != null && custom >= 0) return { limit: custom, tier: "custom" };
+  if (completedAsSeller >= 1) return { limit: TRUSTED_LIMITS.recruiterActiveListings, tier: "trusted" };
+  return { limit: STARTER_LIMITS.recruiterActiveListings, tier: "starter" };
+}
+
+export async function resolveHireLimit(buyerCompanyId: string): Promise<CompanyLimitSnapshot> {
+  const [overrides, used, completedDeals] = await Promise.all([
+    fetchCompanyLimitOverrides(buyerCompanyId),
+    countActiveHires(buyerCompanyId),
+    countCompletedDeals(buyerCompanyId, "buyer")
+  ]);
+  const { limit, tier } = defaultHireLimit(completedDeals, overrides.max_active_hires);
+  return {
+    companyId: buyerCompanyId,
+    role: "carrier",
+    tier,
+    limit,
+    used,
+    completedDeals,
+    customMaxHires: overrides.max_active_hires,
+    customMaxListings: overrides.max_active_listings
+  };
+}
+
+export async function resolveListingLimit(sellerCompanyId?: string): Promise<CompanyLimitSnapshot> {
+  const companyId = sellerCompanyId ?? getActiveCompanyId();
+  const [overrides, used, completedDeals] = await Promise.all([
+    fetchCompanyLimitOverrides(companyId),
+    countActiveListings(companyId),
+    countCompletedDeals(companyId, "seller")
+  ]);
+  const { limit, tier } = defaultListingLimit(completedDeals, overrides.max_active_listings);
+  return {
+    companyId,
+    role: "recruiter",
+    tier,
+    limit,
+    used,
+    completedDeals,
+    customMaxHires: overrides.max_active_hires,
+    customMaxListings: overrides.max_active_listings
+  };
+}
+
+export async function assertCanStartHiring(buyerCompanyId?: string): Promise<CompanyLimitSnapshot> {
+  const companyId = buyerCompanyId ?? getActiveCompanyId();
+  const snapshot = await resolveHireLimit(companyId);
+  if (snapshot.used >= snapshot.limit) {
+    const msg =
+      snapshot.tier === "starter"
+        ? `New carriers may only have ${snapshot.limit} active hire at a time until your first deal is completed. Complete your current hiring process or wait for it to finish.`
+        : `You have reached your limit of ${snapshot.limit} active hires. Complete an existing deal or contact platform support to request a higher limit.`;
+    throw new PlatformLimitError(msg, snapshot);
+  }
+  return snapshot;
+}
+
+export async function assertCanCreateListing(sellerCompanyId?: string): Promise<CompanyLimitSnapshot> {
+  const companyId = sellerCompanyId ?? getActiveCompanyId();
+  const snapshot = await resolveListingLimit(companyId);
+  if (snapshot.used >= snapshot.limit) {
+    const msg =
+      snapshot.tier === "starter"
+        ? `New recruiters may list up to ${snapshot.limit} active drivers until your first deal is completed. Complete a sale or contact your platform manager for higher limits.`
+        : `You have reached your limit of ${snapshot.limit} active listings. Expire or complete existing listings, or contact your platform manager for a custom limit.`;
+    throw new PlatformLimitError(msg, snapshot);
+  }
+  return snapshot;
+}
+
+export type CompanyLimitRow = {
+  id: string;
+  name: string;
+  company_type: string;
+  max_active_hires: number | null;
+  max_active_listings: number | null;
+  completed_as_buyer: number;
+  completed_as_seller: number;
+  active_hires: number;
+  active_listings: number;
+};
+
+export async function fetchCompaniesForLimitManagement(): Promise<CompanyLimitRow[]> {
+  if (!supabase) return [];
+  const { data: companies, error } = await supabase
+    .from("companies")
+    .select("id, name, company_type, max_active_hires, max_active_listings")
+    .neq("company_type", "platform")
+    .order("name");
+  if (error) throw error;
+  if (!companies?.length) return [];
+
+  const ids = companies.map((c) => c.id);
+  const idList = ids.join(",");
+  const [{ data: deals }, { data: listings }] = await Promise.all([
+    supabase
+      .from("deals")
+      .select("buyer_company_id, seller_company_id, status, hiring_stage")
+      .or(`buyer_company_id.in.(${idList}),seller_company_id.in.(${idList})`),
+    supabase.from("driver_listings").select("seller_company_id, status").in("seller_company_id", ids)
+  ]);
+
+  return companies.map((c) => {
+    const companyDeals = (deals ?? []).filter(
+      (d) => d.buyer_company_id === c.id || d.seller_company_id === c.id
+    );
+    const completedAsBuyer = companyDeals.filter(
+      (d) => d.buyer_company_id === c.id && isCompletedDeal(d.status)
+    ).length;
+    const completedAsSeller = companyDeals.filter(
+      (d) => d.seller_company_id === c.id && isCompletedDeal(d.status)
+    ).length;
+    const activeHires = companyDeals.filter(
+      (d) => d.buyer_company_id === c.id && isActiveDeal(d.status, d.hiring_stage ?? "")
+    ).length;
+    const activeListings = (listings ?? []).filter(
+      (l) =>
+        l.seller_company_id === c.id &&
+        ["pending", "active", "reserved", "hiring", "paused"].includes(l.status)
+    ).length;
+
+    return {
+      id: c.id,
+      name: c.name,
+      company_type: c.company_type,
+      max_active_hires: c.max_active_hires,
+      max_active_listings: c.max_active_listings,
+      completed_as_buyer: completedAsBuyer,
+      completed_as_seller: completedAsSeller,
+      active_hires: activeHires,
+      active_listings: activeListings
+    };
+  });
+}
+
+export async function updateCompanyLimits(
+  companyId: string,
+  limits: { maxActiveHires?: number | null; maxActiveListings?: number | null }
+): Promise<void> {
+  if (!supabase) throw new Error("Supabase not configured");
+  const payload: Record<string, unknown> = {};
+  if (limits.maxActiveHires !== undefined) payload.max_active_hires = limits.maxActiveHires;
+  if (limits.maxActiveListings !== undefined) payload.max_active_listings = limits.maxActiveListings;
+  if (!Object.keys(payload).length) return;
+  const { error } = await supabase.from("companies").update(payload).eq("id", companyId);
+  if (error) throw error;
+}
+
+export function limitHint(snapshot: CompanyLimitSnapshot): string {
+  const remaining = Math.max(0, snapshot.limit - snapshot.used);
+  if (snapshot.role === "carrier") {
+    if (snapshot.tier === "starter") {
+      return `${remaining} of ${snapshot.limit} active hire${snapshot.limit === 1 ? "" : "s"} remaining. Complete your first deal to unlock up to ${TRUSTED_LIMITS.carrierActiveHires} concurrent hires.`;
+    }
+    return `${remaining} of ${snapshot.limit} active hires remaining${snapshot.tier === "custom" ? " (manager override)" : ""}.`;
+  }
+  if (snapshot.tier === "starter") {
+    return `${remaining} of ${snapshot.limit} listing slots remaining. Complete your first sale to list up to ${TRUSTED_LIMITS.recruiterActiveListings} drivers.`;
+  }
+  return `${remaining} of ${snapshot.limit} active listings remaining${snapshot.tier === "custom" ? " (manager override)" : ""}.`;
+}

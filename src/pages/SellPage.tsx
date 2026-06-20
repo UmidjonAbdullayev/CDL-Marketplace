@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Paperclip, UploadCloud } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { PageHeader } from "../lib/badges";
@@ -9,6 +9,7 @@ import { US_STATES } from "../lib/us-states";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { createListing } from "../services/marketplace";
+import { PlatformLimitError, resolveListingLimit, limitHint } from "../services/platformLimits";
 import { uploadChatAttachment } from "../services/chatAttachments";
 import type { ScoreFlag } from "../types";
 
@@ -40,6 +41,11 @@ export default function SellPage() {
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const docInputRef = useRef<HTMLInputElement>(null);
   const priceCap = useMemo(() => maxRecruiterPrice(driverType), [driverType]);
+  const [limitNote, setLimitNote] = useState("");
+
+  useEffect(() => {
+    void resolveListingLimit().then((snap) => setLimitNote(limitHint(snap))).catch(() => {});
+  }, []);
 
   const onDocumentChosen = async (file: File) => {
     setUploadingDoc(true);
@@ -88,8 +94,12 @@ export default function SellPage() {
       invalidateDataViews(["my-listings", "admin", "dashboard", "marketplace"]);
       showToast("Listing published successfully!", "success");
       navigate("/my-listings");
-    } catch {
-      showToast("Failed to publish listing", "error");
+    } catch (e) {
+      if (e instanceof PlatformLimitError) {
+        showToast(e.message, "error");
+      } else {
+        showToast("Failed to publish listing", "error");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -110,6 +120,9 @@ export default function SellPage() {
   return (
     <div className="page active">
       <PageHeader title="Sell / List Driver" desc="List a CDL driver lead on the marketplace. All listings require driver consent." />
+      {limitNote ? (
+        <p className="t-caption t-secondary platform-limit-banner">{limitNote}</p>
+      ) : null}
       <div className="card"><div className="card-body">
         <div className="form-steps" id="formSteps">
           {steps.map((s, i) => <div key={s} className={`step-indicator ${i + 1 === step ? "active" : ""} ${i + 1 < step ? "done" : ""}`}>{i + 1}. {s}</div>)}

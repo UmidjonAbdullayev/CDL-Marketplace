@@ -3,7 +3,10 @@ import type { HiringStage } from "../lib/hiring";
 import { supabase } from "../lib/supabase";
 import { enrichMessagesWithAttachmentUrls, getAttachmentViewUrl, uploadChatAttachment } from "./chatAttachments";
 import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation } from "./marketplace";
+import { assertCanStartHiring, resolveHireLimit } from "./platformLimits";
 import type { Driver, DriverCard } from "../types";
+
+export { PlatformLimitError } from "./platformLimits";
 
 type ListingRow = {
   id: number;
@@ -84,6 +87,7 @@ export class ListingNotAvailableError extends Error {
   }
 }
 
+
 /** Any non-completed deal on this listing (any buyer). */
 export async function findActiveDealOnListing(listingId: number): Promise<HiringDealRow | null> {
   if (!supabase) return null;
@@ -128,6 +132,22 @@ export async function fetchListingHireAvailability(listingId: number): Promise<{
       reason: "This driver is no longer available on the marketplace."
     };
   }
+
+  try {
+    const hireLimit = await resolveHireLimit(myCompanyId);
+    if (hireLimit.used >= hireLimit.limit) {
+      return {
+        available: false,
+        reason:
+          hireLimit.tier === "starter"
+            ? "Your account is limited to one active hire until your first deal is completed. Finish your current hiring process to continue."
+            : `You have ${hireLimit.used} active hires (limit ${hireLimit.limit}). Complete or cancel a deal before starting another.`
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+
   return { available: true };
 }
 
@@ -237,6 +257,8 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
   if (otherDeal && otherDeal.buyer_company_id !== getActiveCompanyId()) {
     throw new ListingNotAvailableError();
   }
+
+  await assertCanStartHiring(getActiveCompanyId());
 
   const { data: listing, error: listingErr } = await supabase
     .from("driver_listings")

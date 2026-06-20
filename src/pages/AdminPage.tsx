@@ -3,6 +3,7 @@ import { useApp } from "../context/AppContext";
 import { AdminDealsCommandCenter } from "../components/admin/AdminDealsCommandCenter";
 import { AdminRegistrationReview } from "../components/registration/AdminRegistrationReview";
 import { AdminTeamPanel } from "../components/admin/AdminTeamPanel";
+import { CompanyLimitsPanel } from "../components/admin/CompanyLimitsPanel";
 import { ListingApprovalPanel } from "../components/admin/ListingApprovalPanel";
 import { PageHeader } from "../lib/badges";
 
@@ -39,6 +40,9 @@ export default function AdminPage() {
         <button type="button" className={`tab ${tab === "approvals" ? "active" : ""}`} onClick={() => setTab("approvals")}>Listing Cases</button>
         <button type="button" className={`tab ${tab === "registrations" ? "active" : ""}`} onClick={() => setTab("registrations")}>Registrations</button>
         {isManager ? (
+          <button type="button" className={`tab ${tab === "limits" ? "active" : ""}`} onClick={() => setTab("limits")}>Trust Limits</button>
+        ) : null}
+        {isManager ? (
           <button type="button" className={`tab ${tab === "team" ? "active" : ""}`} onClick={() => setTab("team")}>Admin Team</button>
         ) : null}
         <button type="button" className={`tab ${tab === "fees" ? "active" : ""}`} onClick={() => setTab("fees")}>Fee Policy</button>
@@ -53,6 +57,11 @@ export default function AdminPage() {
       <div className={`tab-panel ${tab === "registrations" ? "active" : ""}`}>
         <AdminRegistrationReview />
       </div>
+      {isManager ? (
+        <div className={`tab-panel ${tab === "limits" ? "active" : ""}`}>
+          <CompanyLimitsPanel />
+        </div>
+      ) : null}
       {isManager ? (
         <div className={`tab-panel ${tab === "team" ? "active" : ""}`}>
           <AdminTeamPanel />

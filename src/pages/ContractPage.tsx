@@ -7,7 +7,7 @@ import { invalidateDataViews } from "../lib/dataInvalidation";
 import { BUYER_CONTRACT_CLAUSES } from "../lib/hiring";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
-import { findActiveDealForListing, fetchListingForContract, fetchListingHireAvailability, ListingNotAvailableError, startHiringProcess } from "../services/hiring";
+import { findActiveDealForListing, fetchListingForContract, fetchListingHireAvailability, ListingNotAvailableError, PlatformLimitError, startHiringProcess } from "../services/hiring";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 import type { DriverCard } from "../types";
 
@@ -101,6 +101,8 @@ export default function ContractPage() {
       if (e instanceof ListingNotAvailableError) {
         showToast(e.message, "error");
         navigate("/marketplace", { replace: true });
+      } else if (e instanceof PlatformLimitError) {
+        showToast(e.message, "error");
       } else {
         showToast("Failed to start hiring process", "error");
       }
