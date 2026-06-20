@@ -12,6 +12,8 @@ export type CompanyRow = {
   created_at: string;
   cdl_score_verified: boolean;
   cdl_score_email: string | null;
+  max_active_hires: number | null;
+  max_active_listings: number | null;
 };
 
 export async function fetchCompanyById(id: string): Promise<CompanyRow | null> {
