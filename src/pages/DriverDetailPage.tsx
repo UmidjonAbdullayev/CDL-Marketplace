@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, FileText, Info, Lock, ShieldCheck, UserCheck } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { canStartHiring } from "../lib/account-capabilities";
@@ -7,6 +7,8 @@ import { useExchangeData } from "../context/ExchangeDataContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
+import { isSupabaseConfigured } from "../lib/supabase";
+import { fetchListingHireAvailability } from "../services/hiring";
 
 export default function DriverDetailPage() {
   const navigate = useNavigate();
@@ -17,6 +19,16 @@ export default function DriverDetailPage() {
   const listingId = Number(id);
   const driver = useMemo(() => (listingId ? driverDetails[listingId] ?? null : null), [driverDetails, listingId]);
   const canStartHiringProcess = canStartHiring(sessionUser);
+  const [hireAvailable, setHireAvailable] = useState(true);
+  const [hireBlockedReason, setHireBlockedReason] = useState("");
+
+  useEffect(() => {
+    if (!listingId || !isSupabaseConfigured) return;
+    void fetchListingHireAvailability(listingId).then((result) => {
+      setHireAvailable(result.available);
+      setHireBlockedReason(result.reason ?? "");
+    });
+  }, [listingId]);
 
   useEffect(() => {
     if (listingId) void loadDriverDetail(listingId);
@@ -83,13 +95,28 @@ export default function DriverDetailPage() {
               </p>
               <div className="detail-seller"><StarRating rating={driver.sellerRating} /> {driver.seller}</div>
               {canStartHiringProcess ? (
-                <button
-                  className="btn btn-primary btn-block"
-                  style={{ marginTop: 16 }}
-                  onClick={() => navigate(`/hiring/contract/${driver.id}`)}
-                >
-                  Start Hiring Process
-                </button>
+                hireAvailable ? (
+                  <button
+                    className="btn btn-primary btn-block"
+                    style={{ marginTop: 16 }}
+                    onClick={() => navigate(`/hiring/contract/${driver.id}`)}
+                  >
+                    Start Hiring Process
+                  </button>
+                ) : (
+                  <div className="action-locked-wrap" style={{ marginTop: 16 }}>
+                    <button type="button" className="btn btn-secondary btn-block" disabled aria-disabled="true">
+                      Driver Not Available
+                    </button>
+                    <div className="action-locked-callout">
+                      <Info className="icon-sm action-locked-icon" aria-hidden="true" />
+                      <div>
+                        <strong>No longer available</strong>
+                        <p>{hireBlockedReason || "Another carrier has already started hiring for this driver."}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
               ) : (
                 <div className="action-locked-wrap" style={{ marginTop: 16 }}>
                   <button type="button" className="btn btn-primary btn-block action-locked-btn" disabled aria-disabled="true">

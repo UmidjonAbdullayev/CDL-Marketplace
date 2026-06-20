@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { usePlatformRealtime } from "../../hooks/usePlatformRealtime";
 import { CheckCircle2, Shield, XCircle } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { CARRIER_PLANS } from "../../lib/carrier-plans";
@@ -48,6 +49,12 @@ export function AdminRegistrationReview() {
   useEffect(() => {
     void load();
   }, []);
+
+  usePlatformRealtime(
+    useCallback((topics) => {
+      if (topics.has("admin")) void load();
+    }, [])
+  );
 
   const act = async (fn: () => Promise<void>, msg: string) => {
     try {

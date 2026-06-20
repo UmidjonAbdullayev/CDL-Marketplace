@@ -1,5 +1,5 @@
-import { ArrowLeft, ArrowRight, UploadCloud } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Paperclip, UploadCloud } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { PageHeader } from "../lib/badges";
@@ -9,6 +9,7 @@ import { US_STATES } from "../lib/us-states";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { createListing } from "../services/marketplace";
+import { uploadChatAttachment } from "../services/chatAttachments";
 import type { ScoreFlag } from "../types";
 
 const steps = ["Basic Info", "Qualifications", "Availability", "Documents", "Consent", "Pricing", "Review"];
@@ -35,7 +36,23 @@ export default function SellPage() {
   const [driverType, setDriverType] = useState("Owner Operator");
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState<number | "">("");
+  const [documents, setDocuments] = useState<string[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const docInputRef = useRef<HTMLInputElement>(null);
   const priceCap = useMemo(() => maxRecruiterPrice(driverType), [driverType]);
+
+  const onDocumentChosen = async (file: File) => {
+    setUploadingDoc(true);
+    try {
+      const uploaded = await uploadChatAttachment(file, "listings");
+      setDocuments((prev) => [...prev, uploaded.name]);
+      showToast(`Uploaded: ${uploaded.name}`, "success");
+    } catch {
+      showToast("Failed to upload document", "error");
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
 
   const publish = async () => {
     if (!first.trim() || !last.trim() || !state || !phone.trim() || !email.trim() || !cdlNumber.trim() || yearsExp === "" || !availDate || price === "") {
@@ -65,7 +82,8 @@ export default function SellPage() {
         routePref,
         notes: notes.trim(),
         price: Number(price),
-        driverType
+        driverType,
+        documents: documents.length ? documents : undefined
       });
       invalidateDataViews(["my-listings", "admin", "dashboard", "marketplace"]);
       showToast("Listing published successfully!", "success");
@@ -153,11 +171,35 @@ export default function SellPage() {
         </div>
         <div className={`form-step ${step === 4 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 4: Upload Documents</h3>
-          <div className="upload-zone" onClick={() => showToast("Document upload simulated", "success")}>
+          <input
+            ref={docInputRef}
+            type="file"
+            className="file-input-hidden"
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void onDocumentChosen(file);
+            }}
+          />
+          <div
+            className="upload-zone"
+            role="button"
+            tabIndex={0}
+            onClick={() => !uploadingDoc && docInputRef.current?.click()}
+            onKeyDown={(e) => e.key === "Enter" && !uploadingDoc && docInputRef.current?.click()}
+          >
             <UploadCloud />
-            <div className="t-body">Drag & drop files here or click to browse</div>
+            <div className="t-body">{uploadingDoc ? "Uploading…" : "Drag & drop files here or click to browse"}</div>
             <div className="t-caption" style={{ marginTop: "var(--s2)" }}>CDL Copy, Medical Certificate, MVR Report, Employment History</div>
           </div>
+          {documents.length > 0 ? (
+            <ul className="sell-doc-list">
+              {documents.map((name) => (
+                <li key={name}><Paperclip className="icon-sm" /> {name}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <div className={`form-step ${step === 5 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 5: Consent Confirmation</h3>
@@ -193,6 +235,7 @@ export default function SellPage() {
             <strong>Driver Type:</strong> {driverType}<br />
             <strong>Listing Price:</strong> {price !== "" ? fmtPrice(Number(price)) : "—"}<br />
             <strong>Consent:</strong> {consent ? "Confirmed" : "Pending"}<br />
+            <strong>Documents:</strong> {documents.length ? documents.join(", ") : "None uploaded"}<br />
             <strong>Status:</strong> Pending admin approval
           </div>
         </div>

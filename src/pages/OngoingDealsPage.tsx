@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { ChevronRight, Handshake, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -8,6 +8,7 @@ import { fmtRecruitingFee, fullName } from "../lib/format";
 import { isPlatformStaff } from "../lib/account-capabilities";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchOngoingDeals, type HiringDealRow } from "../services/hiring";
+import { usePlatformRealtime } from "../hooks/usePlatformRealtime";
 
 function driverName(deal: HiringDealRow): string {
   const d = deal.driver_listings;
@@ -50,6 +51,22 @@ export default function OngoingDealsPage() {
       }
     })();
   }, [companyId, platformWide]);
+
+  const reloadDeals = useCallback(async () => {
+    if (!isSupabaseConfigured || !companyId) return;
+    try {
+      setDeals(await fetchOngoingDeals({ platformWide }));
+    } catch {
+      /* background refresh */
+    }
+  }, [companyId, platformWide]);
+
+  usePlatformRealtime(
+    useCallback((topics) => {
+      if (topics.has("deals")) void reloadDeals();
+    }, [reloadDeals]),
+    Boolean(companyId)
+  );
 
   return (
     <div className="page active">

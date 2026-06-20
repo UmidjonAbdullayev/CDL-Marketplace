@@ -77,6 +77,79 @@ function dealId(): string {
   return `DL-${Date.now().toString().slice(-6)}`;
 }
 
+export class ListingNotAvailableError extends Error {
+  constructor(message = "This driver is no longer available for hiring.") {
+    super(message);
+    this.name = "ListingNotAvailableError";
+  }
+}
+
+/** Any non-completed deal on this listing (any buyer). */
+export async function findActiveDealOnListing(listingId: number): Promise<HiringDealRow | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("deals")
+    .select("*")
+    .eq("listing_id", listingId)
+    .not("status", "eq", "Completed")
+    .neq("hiring_stage", "completed")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as HiringDealRow | null;
+}
+
+export async function fetchListingHireAvailability(listingId: number): Promise<{ available: boolean; reason?: string }> {
+  if (!supabase) return { available: true };
+  const { data: listing, error: listingErr } = await supabase
+    .from("driver_listings")
+    .select("status")
+    .eq("id", listingId)
+    .maybeSingle();
+  if (listingErr) throw listingErr;
+  if (!listing) return { available: false, reason: "Listing not found." };
+
+  const activeDeal = await findActiveDealOnListing(listingId);
+  const myCompanyId = getActiveCompanyId();
+  if (activeDeal) {
+    if (activeDeal.buyer_company_id === myCompanyId) {
+      return { available: true };
+    }
+    return {
+      available: false,
+      reason: "This driver is no longer available — another carrier has already started hiring."
+    };
+  }
+
+  if (listing.status !== "active") {
+    return {
+      available: false,
+      reason: "This driver is no longer available on the marketplace."
+    };
+  }
+  return { available: true };
+}
+
+async function markListingAsHiring(listingId: number): Promise<void> {
+  if (!supabase) throw new Error("Supabase not configured");
+  const { data, error } = await supabase
+    .from("driver_listings")
+    .update({ status: "hiring", updated_at: new Date().toISOString() })
+    .eq("id", listingId)
+    .eq("status", "active")
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    const activeDeal = await findActiveDealOnListing(listingId);
+    if (activeDeal && activeDeal.buyer_company_id !== getActiveCompanyId()) {
+      throw new ListingNotAvailableError();
+    }
+    throw new ListingNotAvailableError("This driver is no longer available on the marketplace.");
+  }
+}
+
 async function insertDealEvent(dealIdValue: string, stage: string, title: string, description = "") {
   if (!supabase) return;
   await supabase.from("deal_events").insert({ deal_id: dealIdValue, stage, title, description });
@@ -137,26 +210,45 @@ export async function findActiveDealForListing(listingId: number): Promise<Hirin
 export async function startHiringProcess(listingId: number, buyerSignerName: string): Promise<string> {
   if (!supabase) throw new Error("Supabase not configured");
 
-  const existing = await findActiveDealForListing(listingId);
-  if (existing) {
-    if (!existing.buyer_signed_at) {
-      await signBuyerContract(existing.id, buyerSignerName);
+  const availability = await fetchListingHireAvailability(listingId);
+  const existingBuyerDeal = await findActiveDealForListing(listingId);
+
+  if (!availability.available && !existingBuyerDeal) {
+    throw new ListingNotAvailableError(availability.reason);
+  }
+
+  if (existingBuyerDeal) {
+    if (!existingBuyerDeal.buyer_signed_at) {
+      await signBuyerContract(existingBuyerDeal.id, buyerSignerName);
     }
-    if (existing.listing_id) {
-      await supabase
-        .from("driver_listings")
-        .update({ status: "hiring", updated_at: new Date().toISOString() })
-        .eq("id", existing.listing_id);
+    if (existingBuyerDeal.listing_id) {
+      await markListingAsHiring(existingBuyerDeal.listing_id).catch(() => {
+        void supabase!
+          .from("driver_listings")
+          .update({ status: "hiring", updated_at: new Date().toISOString() })
+          .eq("id", existingBuyerDeal.listing_id!)
+          .in("status", ["active", "reserved"]);
+      });
     }
-    return existing.id;
+    return existingBuyerDeal.id;
+  }
+
+  const otherDeal = await findActiveDealOnListing(listingId);
+  if (otherDeal && otherDeal.buyer_company_id !== getActiveCompanyId()) {
+    throw new ListingNotAvailableError();
   }
 
   const { data: listing, error: listingErr } = await supabase
     .from("driver_listings")
-    .select("price, carrier_price, seller_company_id, cdl_class, equipment, state, first_name, last_name")
+    .select("price, carrier_price, seller_company_id, cdl_class, equipment, state, first_name, last_name, status")
     .eq("id", listingId)
     .single();
   if (listingErr || !listing) throw new Error("Listing not found");
+  if (listing.status !== "active") {
+    throw new ListingNotAvailableError();
+  }
+
+  await markListingAsHiring(listingId);
 
   const dealAmount = listing.carrier_price ?? listing.price;
   const id = dealId();
@@ -174,11 +266,17 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
     buyer_signed_at: now,
     buyer_signer_name: buyerSignerName
   });
-  if (dealErr) throw dealErr;
+  if (dealErr) {
+    await supabase
+      .from("driver_listings")
+      .update({ status: "active", updated_at: now })
+      .eq("id", listingId)
+      .eq("status", "hiring");
+    throw dealErr;
+  }
 
   await insertDealEvent(id, "contract", "Buyer signed recruiting agreement", `Signed by ${buyerSignerName}`);
   await ensureCarrierAdminConversation(id, listing.seller_company_id, getActiveCompanyId());
-  await supabase.from("driver_listings").update({ status: "hiring", updated_at: now }).eq("id", listingId);
 
   await supabase.from("activities").insert({
     activity_type: "deal",
@@ -538,7 +636,7 @@ export function subscribeDealMessages(conversationId: string, onChange: () => vo
     .on(
       "postgres_changes",
       {
-        event: "INSERT",
+        event: "*",
         schema: "public",
         table: "messages",
         filter: `conversation_id=eq.${conversationId}`
@@ -551,7 +649,11 @@ export function subscribeDealMessages(conversationId: string, onChange: () => vo
   };
 }
 
-export function subscribeDealWorkspace(dealIdValue: string, onChange: () => void): () => void {
+export function subscribeDealWorkspace(
+  dealIdValue: string,
+  onChange: () => void,
+  listingId?: number | null
+): () => void {
   if (!supabase) return () => {};
   const channel = supabase
     .channel(`deal-workspace-${dealIdValue}`)
@@ -568,14 +670,48 @@ export function subscribeDealWorkspace(dealIdValue: string, onChange: () => void
     .on(
       "postgres_changes",
       {
-        event: "UPDATE",
+        event: "*",
         schema: "public",
         table: "deals",
         filter: `id=eq.${dealIdValue}`
       },
       () => onChange()
     )
-    .subscribe();
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "deal_documents",
+        filter: `deal_id=eq.${dealIdValue}`
+      },
+      () => onChange()
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "disputes",
+        filter: `deal_id=eq.${dealIdValue}`
+      },
+      () => onChange()
+    );
+
+  if (listingId) {
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "driver_listings",
+        filter: `id=eq.${listingId}`
+      },
+      () => onChange()
+    );
+  }
+
+  channel.subscribe();
   return () => {
     if (supabase) void supabase.removeChannel(channel);
   };

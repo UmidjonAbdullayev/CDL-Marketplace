@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePlatformRealtime } from "../hooks/usePlatformRealtime";
 import {
   AlertTriangle,
   Bell,
@@ -159,9 +160,16 @@ export default function DealWorkspacePage() {
 
   useEffect(() => {
     if (!dealId || isAdmin) return;
-    const unsub = subscribeDealWorkspace(dealId, () => void load());
+    const listingId = workspace?.deal?.listing_id ?? null;
+    const unsub = subscribeDealWorkspace(dealId, () => void load(), listingId);
     return unsub;
-  }, [dealId, isAdmin, load]);
+  }, [dealId, isAdmin, load, workspace?.deal?.listing_id]);
+
+  usePlatformRealtime(
+    useCallback((topics) => {
+      if (topics.has("deals")) void load();
+    }, [load])
+  );
 
   const pullMessages = useCallback(async () => {
     if (!conversationId) return;
@@ -178,12 +186,8 @@ export default function DealWorkspacePage() {
 
   useEffect(() => {
     if (!chatOpen || !conversationId) return;
-    const interval = window.setInterval(() => void pullMessages(), 3000);
     const unsub = subscribeDealMessages(conversationId, () => void pullMessages());
-    return () => {
-      window.clearInterval(interval);
-      unsub();
-    };
+    return unsub;
   }, [chatOpen, conversationId, pullMessages]);
 
   const mergeMessage = (saved: DealMessageRow, tempId: string) => {
@@ -366,7 +370,7 @@ export default function DealWorkspacePage() {
         </div>
         <div className="deal-party-header-actions">
           <button type="button" className="btn btn-danger btn-sm deal-dispute-btn" onClick={() => openDisputeModal(deal.id)}>
-            Dispute Deal
+            <AlertTriangle className="icon-sm" /> Open Dispute
           </button>
           <button type="button" className="deal-party-bell" aria-label="Notifications">
             <Bell className="icon-sm" />

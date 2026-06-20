@@ -46,6 +46,7 @@ export function MessengerPanel({
 }: MessengerPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const internalEndRef = useRef<HTMLDivElement>(null);
   const endRef = messagesEndRef ?? internalEndRef;
 
@@ -53,6 +54,13 @@ export function MessengerPanel({
     requestAnimationFrame(() => {
       textareaRef.current?.focus({ preventScroll: true });
     });
+  };
+
+  const scrollMessagesToBottom = () => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -64,9 +72,8 @@ export function MessengerPanel({
   }, [sending]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-    focusInput();
-  }, [messages.length, messages[messages.length - 1]?.id]);
+    scrollMessagesToBottom();
+  }, [messages.length, messages[messages.length - 1]?.id, loading]);
 
   const onFileChosen = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -79,6 +86,7 @@ export function MessengerPanel({
     if (!value.trim() || sending) return;
     onSend();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
+    requestAnimationFrame(scrollMessagesToBottom);
     focusInput();
   };
 
@@ -104,7 +112,7 @@ export function MessengerPanel({
         {live ? <span className="messenger-live t-caption">Live</span> : null}
       </div>
 
-      <div className="messenger-panel-messages">
+      <div ref={messagesContainerRef} className="messenger-panel-messages">
         {loading ? (
           <p className="messenger-empty t-secondary">Loading messages…</p>
         ) : messages.length === 0 ? (
@@ -129,7 +137,7 @@ export function MessengerPanel({
             </div>
           ))
         )}
-        {messagesEndRef ? <div ref={endRef} /> : <div ref={internalEndRef} />}
+        <div ref={endRef} className="messenger-messages-end" aria-hidden="true" />
       </div>
 
       <div className="messenger-panel-footer">
@@ -137,7 +145,7 @@ export function MessengerPanel({
           <input
             ref={fileInputRef}
             type="file"
-            className="messenger-file-input"
+            className="file-input-hidden"
             accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
             onChange={onFileChosen}
           />
@@ -169,9 +177,9 @@ export function MessengerPanel({
             title="Attach file"
             disabled={sending}
             onClick={() => {
-            fileInputRef.current?.click();
-            focusInput();
-          }}
+              fileInputRef.current?.click();
+              focusInput();
+            }}
           >
             <Paperclip className="icon-sm" />
           </button>

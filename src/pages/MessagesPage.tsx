@@ -72,12 +72,8 @@ export default function MessagesPage() {
 
   useEffect(() => {
     if (!conversationId) return;
-    const interval = window.setInterval(() => void pullMessages(), 3000);
     const unsub = subscribeConversationMessages(conversationId, () => void pullMessages());
-    return () => {
-      window.clearInterval(interval);
-      unsub();
-    };
+    return unsub;
   }, [conversationId, pullMessages]);
 
   const mergeMessage = (saved: MessageRow, tempId: string) => {
@@ -164,7 +160,7 @@ export default function MessagesPage() {
   if (listLoading && conversations.length === 0) {
     return (
       <div className="page active">
-        <PageHeader title="Messages" desc="Communicate with sellers, buyers, and CDL Exchange support." />
+        <PageHeader title="Messages" desc="Chat with CDL Exchange platform admins about your active deals." />
         <p className="t-secondary">Loading conversations...</p>
       </div>
     );
@@ -178,7 +174,7 @@ export default function MessagesPage() {
 
   return (
     <div className="page active messages-page">
-      <PageHeader title="Messages" desc="Communicate with sellers, buyers, and CDL Exchange support." />
+      <PageHeader title="Messages" desc="Chat with CDL Exchange platform admins about your active deals." />
       {listRefreshing ? <div className="t-caption t-secondary messages-page-status">Updating...</div> : null}
       <div className="messages-layout">
         <div className="messages-sidebar">
@@ -221,7 +217,7 @@ export default function MessagesPage() {
               messagesEndRef={messagesEndRef}
             />
           ) : (
-            <div className="messages-empty t-secondary">No conversations yet.</div>
+            <div className="messages-empty t-secondary">No admin conversations yet. Chats open when you start a hiring process.</div>
           )}
         </div>
       </div>

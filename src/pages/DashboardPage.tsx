@@ -145,7 +145,7 @@ export default function DashboardPage() {
     );
   }
 
-  const activeDeals = dealStats.awaiting + dealStats.pendingPayment;
+  const activeDeals = dealStats.activeOngoing;
 
   return (
     <div className="page active dashboard-page">
@@ -174,7 +174,7 @@ export default function DashboardPage() {
               icon={<Handshake />}
               label="Active Deals"
               value={String(activeDeals)}
-              subtext={`${dealStats.pendingPayment} pending`}
+              subtext={`${dealStats.pendingPayment} pending payment`}
               subCls="neutral"
             />
             <SnapshotMetric

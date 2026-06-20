@@ -1131,7 +1131,14 @@ tbody tr:hover td { background: var(--bg); }
   align-items: center;
   gap: 10px;
 }
-.deal-dispute-btn { border: 1px solid var(--danger); background: #fff; }
+.deal-dispute-btn {
+  border: 1px solid var(--danger);
+  background: #fff;
+  color: var(--danger);
+}
+.deal-dispute-btn:hover {
+  background: #fef2f2;
+}
 .deal-party-bell {
   width: 36px;
   height: 36px;
@@ -2757,3 +2764,21 @@ tr.row-selected td { background: var(--primary-light); }
   font-size: 12px;
 }
 .messenger-file-input { display: none; }
+.file-input-hidden { display: none; }
+.sell-doc-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+.sell-doc-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  color: var(--gray-700);
+}
+.messenger-messages-end {
+  height: 1px;
+  flex-shrink: 0;
+}

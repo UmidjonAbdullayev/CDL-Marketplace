@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { MessengerPanel } from "../chat/MessengerPanel";
+import { usePlatformRealtime } from "../../hooks/usePlatformRealtime";
 import { useApp } from "../../context/AppContext";
 import { fmtDate, fmtPrice, fmtRelativeUpdated, fullName } from "../../lib/format";
 import { HIRING_STAGES, stageIndex, statusBadgeClass, type HiringStage } from "../../lib/hiring";
@@ -176,7 +177,15 @@ export function AdminDealsCommandCenter() {
 
   useEffect(() => {
     void loadDeals();
-  }, [sessionUser?.id, sessionUser?.adminRole]);
+  }, [loadDeals]);
+
+  usePlatformRealtime(
+    useCallback((topics) => {
+      if (topics.has("deals") || topics.has("admin") || topics.has("messages")) {
+        void loadDeals();
+      }
+    }, [loadDeals])
+  );
 
   const loadDetail = useCallback(async (dealId: string) => {
     setDetailLoading(true);
@@ -204,9 +213,10 @@ export function AdminDealsCommandCenter() {
 
   useEffect(() => {
     if (!selectedId) return;
-    const unsub = subscribeDealWorkspace(selectedId, () => void loadDetail(selectedId));
+    const listingId = workspace?.deal?.listing_id ?? selectedDeal?.listing_id ?? null;
+    const unsub = subscribeDealWorkspace(selectedId, () => void loadDetail(selectedId), listingId);
     return unsub;
-  }, [selectedId, loadDetail]);
+  }, [selectedId, loadDetail, workspace?.deal?.listing_id, selectedDeal?.listing_id]);
 
   const conversationId = chatLane === "carrier"
     ? workspace?.carrierConversationId ?? selectedDeal?.carrier_conversation_id
@@ -232,12 +242,8 @@ export function AdminDealsCommandCenter() {
 
   useEffect(() => {
     if (!conversationId) return;
-    const interval = window.setInterval(() => void pullMessages(), 4000);
     const unsub = subscribeDealMessages(conversationId, () => void pullMessages());
-    return () => {
-      window.clearInterval(interval);
-      unsub();
-    };
+    return unsub;
   }, [conversationId, pullMessages]);
 
   const sendChat = async () => {

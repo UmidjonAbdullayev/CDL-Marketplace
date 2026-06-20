@@ -40,7 +40,6 @@ import {
   fetchSellerReservations,
   fetchSellerStats,
   sendMessage as sendMessageApi,
-  subscribeMarketplaceListings,
   type ConversationSummary,
   type DealRow,
   type DisputeRow,
@@ -57,6 +56,7 @@ import {
   type AppNotification,
   type UpcomingAction
 } from "../services/notifications";
+import { subscribePlatformRealtime, type RealtimeTopic } from "../services/realtime";
 import type { Driver, DriverCard, HotListing, ScoreFlag } from "../types";
 
 const STALE_MS = 5 * 60 * 1000;
@@ -100,7 +100,7 @@ export type DashboardFindFilters = {
   minHotScore: number;
 };
 
-type DealStats = { inEscrow: number; pendingPayment: number; awaiting: number; completed: number };
+type DealStats = { inEscrow: number; pendingPayment: number; awaiting: number; completed: number; activeOngoing: number };
 
 type DashboardState = {
   hotListings: HotListing[];
@@ -136,7 +136,8 @@ type ViewKey =
 function pathToView(path: string): ViewKey | "driver" | null {
   if (path === "/" || path === "/dashboard") return "dashboard";
   if (path === "/marketplace") return "marketplace";
-  if (path === "/ongoing-deals" || path === "/purchased") return "purchased";
+  if (path === "/ongoing-deals" || path.startsWith("/deals/")) return "deals";
+  if (path === "/purchased") return "purchased";
   if (path === "/deals") return "deals";
   if (path === "/disputes") return "disputes";
   if (path === "/messages") return "messages";
@@ -261,7 +262,7 @@ interface ExchangeDataValue {
 
 const ExchangeDataContext = createContext<ExchangeDataValue | undefined>(undefined);
 
-const emptyDealStats: DealStats = { inEscrow: 0, pendingPayment: 0, awaiting: 0, completed: 0 };
+const emptyDealStats: DealStats = { inEscrow: 0, pendingPayment: 0, awaiting: 0, completed: 0, activeOngoing: 0 };
 
 const emptyDashboard: DashboardState = {
   hotListings: [],
@@ -740,45 +741,43 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
 
   const invalidateViews = useCallback((views: ViewKey | ViewKey[]) => {
     const list = Array.isArray(views) ? views : [views];
-    const current = pathToView(location.pathname);
 
     if (list.includes("dashboard")) {
       setDashboard((d) => ({ ...d, loadedAt: 0 }));
-      if (current === "dashboard") void refreshDashboard(true);
+      void refreshDashboard(true);
     }
     if (list.includes("marketplace")) {
       setMarketplaceLoadedAt(0);
       marketplaceQueryKeyRef.current = "";
-      if (current === "marketplace") void refreshMarketplace(true);
+      void refreshMarketplace(true);
     }
     if (list.includes("purchased")) {
       setPurchasedLoadedAt(0);
-      if (current === "purchased") void refreshPurchased(true);
+      void refreshPurchased(true);
     }
     if (list.includes("deals")) {
       setDealsLoadedAt(0);
-      if (current === "deals") void refreshDeals(true);
+      void refreshDeals(true);
     }
     if (list.includes("disputes")) {
       setDisputesLoadedAt(0);
-      if (current === "disputes") void refreshDisputes(true);
+      void refreshDisputes(true);
     }
     if (list.includes("messages")) {
       setConversationsLoadedAt(0);
       messagesLoadedForRef.current = "";
-      if (current === "messages") void refreshConversations(true);
+      void refreshConversations(true);
     }
     if (list.includes("my-listings")) {
       setListingsLoadedAt(0);
       listingsQueryKeyRef.current = "";
-      if (current === "my-listings") void refreshMyListings(true);
+      void refreshMyListings(true);
     }
     if (list.includes("admin")) {
       setAdminLoadedAt(0);
-      if (current === "admin") void refreshAdmin(true);
+      void refreshAdmin(true);
     }
   }, [
-    location.pathname,
     refreshDashboard,
     refreshMarketplace,
     refreshPurchased,
@@ -787,6 +786,46 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     refreshConversations,
     refreshMyListings,
     refreshAdmin
+  ]);
+
+  const locationPathRef = useRef(location.pathname);
+  locationPathRef.current = location.pathname;
+
+  const handlePlatformRealtime = useCallback((topics: Set<RealtimeTopic>) => {
+    void refreshNotifications();
+
+    if (topics.has("dashboard")) void refreshDashboard(true);
+    if (topics.has("marketplace")) void refreshMarketplace(true);
+    if (topics.has("deals")) void refreshDeals(true);
+    if (topics.has("disputes")) void refreshDisputes(true);
+    if (topics.has("purchased")) void refreshPurchased(true);
+    if (topics.has("my-listings")) void refreshMyListings(true);
+    if (topics.has("admin")) void refreshAdmin(true);
+
+    if (topics.has("messages")) {
+      void refreshConversations(true);
+      if (pathToView(locationPathRef.current) === "messages") {
+        void refreshConversationMessages(true);
+      }
+    }
+
+    const path = locationPathRef.current;
+    if (path.startsWith("/driver/")) {
+      const id = Number(path.split("/").pop());
+      if (id) void loadDriverDetail(id, true);
+    }
+  }, [
+    refreshDashboard,
+    refreshMarketplace,
+    refreshDeals,
+    refreshDisputes,
+    refreshPurchased,
+    refreshMyListings,
+    refreshAdmin,
+    refreshConversations,
+    refreshConversationMessages,
+    refreshNotifications,
+    loadDriverDetail
   ]);
 
   const resetMarketplaceFilters = useCallback(() => {
@@ -824,11 +863,8 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured || appLoading) return;
-    const unsub = subscribeMarketplaceListings(() => {
-      invalidateViews(["marketplace", "dashboard", "my-listings"]);
-    });
-    return unsub;
-  }, [appLoading, invalidateViews]);
+    return subscribePlatformRealtime(handlePlatformRealtime);
+  }, [appLoading, handlePlatformRealtime]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {

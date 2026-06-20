@@ -147,6 +147,17 @@ function periodSince(period: DashboardPeriod): string {
   return new Date(Date.now() - ms).toISOString();
 }
 
+async function fetchListingIdsBlockedByActiveDeals(): Promise<number[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("deals")
+    .select("listing_id")
+    .not("status", "eq", "Completed")
+    .neq("hiring_stage", "completed");
+  if (error) throw error;
+  return [...new Set((data ?? []).map((d) => d.listing_id).filter((id): id is number => id != null))];
+}
+
 export async function fetchTrendingListingIds(): Promise<Set<number>> {
   if (!supabase) return new Set();
   const { data } = await supabase
@@ -176,11 +187,17 @@ export async function fetchDriverCardsPage(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  const blockedListingIds = await fetchListingIdsBlockedByActiveDeals();
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q: any = supabase
     .from("driver_listings")
     .select(LISTING_CARD_SELECT, { count: "exact" })
     .eq("status", "active");
+
+  if (blockedListingIds.length) {
+    q = q.not("id", "in", `(${blockedListingIds.join(",")})`);
+  }
 
   if (viewer === "carrier") {
     q = q.not("carrier_price", "is", null).gt("carrier_price", 0);
@@ -486,11 +503,11 @@ export async function updateDealStatus(dealId: string, status: string, escrowRel
 }
 
 export async function fetchDealStats(period?: DashboardPeriod) {
-  if (!supabase) return { inEscrow: 0, pendingPayment: 0, awaiting: 0, completed: 0 };
+  if (!supabase) return { inEscrow: 0, pendingPayment: 0, awaiting: 0, completed: 0, activeOngoing: 0 };
   const companyId = getActiveCompanyId();
   const { data: allDeals } = await supabase
     .from("deals")
-    .select("status, escrow_amount, escrow_released, updated_at, created_at")
+    .select("status, escrow_amount, escrow_released, updated_at, created_at, hiring_stage")
     .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
   const deals = allDeals ?? [];
   const completedInPeriod = period
@@ -498,11 +515,15 @@ export async function fetchDealStats(period?: DashboardPeriod) {
         (d) => d.status === "Completed" && d.updated_at && d.updated_at >= periodSince(period)
       ).length
     : deals.filter((d) => d.status === "Completed").length;
+  const activeOngoing = deals.filter(
+    (d) => d.status !== "Completed" && d.hiring_stage !== "completed"
+  ).length;
   return {
     inEscrow: deals.filter((d) => d.escrow_amount > 0 && !d.escrow_released).reduce((s, d) => s + d.escrow_amount, 0),
     pendingPayment: deals.filter((d) => d.status === "Pending Payment").length,
     awaiting: deals.filter((d) => ["Contact Released", "Orientation Scheduled", "Hired Confirmed"].includes(d.status)).length,
-    completed: completedInPeriod
+    completed: completedInPeriod,
+    activeOngoing
   };
 }
 
@@ -636,11 +657,12 @@ export async function fetchConversationsPage(
   const { data, error, count } = await supabase
     .from("conversations")
     .select(
-      `id, subject, last_message_at, is_support, deal_id, buyer_company_id, seller_company_id,
+      `id, subject, last_message_at, is_support, deal_id, buyer_company_id, seller_company_id, channel_type,
       companies:companies!conversations_seller_company_id_fkey (name)`,
       { count: "exact" }
     )
     .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
+    .in("channel_type", ["carrier_admin", "recruiter_admin"])
     .order("last_message_at", { ascending: false })
     .range(from, to);
   if (error) throw error;
@@ -686,7 +708,7 @@ export function subscribeConversationMessages(conversationId: string, onChange: 
     .on(
       "postgres_changes",
       {
-        event: "INSERT",
+        event: "*",
         schema: "public",
         table: "messages",
         filter: `conversation_id=eq.${conversationId}`

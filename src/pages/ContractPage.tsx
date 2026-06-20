@@ -7,7 +7,7 @@ import { invalidateDataViews } from "../lib/dataInvalidation";
 import { BUYER_CONTRACT_CLAUSES } from "../lib/hiring";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
-import { findActiveDealForListing, fetchListingForContract, startHiringProcess } from "../services/hiring";
+import { findActiveDealForListing, fetchListingForContract, fetchListingHireAvailability, ListingNotAvailableError, startHiringProcess } from "../services/hiring";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 import type { DriverCard } from "../types";
 
@@ -20,6 +20,8 @@ export default function ContractPage() {
 
   const [driver, setDriver] = useState<DriverCard | null>(null);
   const [sellerCompanyId, setSellerCompanyId] = useState<string | null>(null);
+  const [listingUnavailable, setListingUnavailable] = useState(false);
+  const [unavailableReason, setUnavailableReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [signerName, setSignerName] = useState(sessionUser?.name ?? "");
   const [agreed, setAgreed] = useState(false);
@@ -37,6 +39,13 @@ export default function ContractPage() {
     void (async () => {
       try {
         if (isSupabaseConfigured) {
+          const availability = await fetchListingHireAvailability(id);
+          if (!availability.available) {
+            setListingUnavailable(true);
+            setUnavailableReason(availability.reason ?? "This driver is no longer available.");
+            setLoading(false);
+            return;
+          }
           const existing = await findActiveDealForListing(id);
           if (existing?.buyer_signed_at) {
             navigate(`/deals/${existing.id}`, { replace: true });
@@ -88,8 +97,13 @@ export default function ContractPage() {
       invalidateDataViews(["deals", "marketplace", "dashboard", "messages", "my-listings"]);
       showToast("Agreement signed. Awaiting seller signature.", "success");
       navigate(`/deals/${dealId}`);
-    } catch {
-      showToast("Failed to start hiring process", "error");
+    } catch (e) {
+      if (e instanceof ListingNotAvailableError) {
+        showToast(e.message, "error");
+        navigate("/marketplace", { replace: true });
+      } else {
+        showToast("Failed to start hiring process", "error");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -97,6 +111,15 @@ export default function ContractPage() {
 
   if (loading) {
     return <div className="page active"><p className="t-secondary">Loading contract...</p></div>;
+  }
+
+  if (listingUnavailable) {
+    return (
+      <div className="page active">
+        <p className="t-secondary">{unavailableReason}</p>
+        <button className="btn btn-secondary btn-sm" onClick={() => navigate("/marketplace")}>Back to Marketplace</button>
+      </div>
+    );
   }
 
   if (!driver) {

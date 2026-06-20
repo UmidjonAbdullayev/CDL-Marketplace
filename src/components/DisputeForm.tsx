@@ -88,7 +88,7 @@ export function DisputeForm({ presetDealId, onSuccess, onCancel, showToast }: Pr
         <input
           ref={fileInputRef}
           type="file"
-          className="messenger-file-input"
+          className="file-input-hidden"
           accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
           onChange={(e) => {
             const file = e.target.files?.[0];

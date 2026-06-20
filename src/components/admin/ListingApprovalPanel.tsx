@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../context/AppContext";
+import { usePlatformRealtime } from "../../hooks/usePlatformRealtime";
 import { invalidateDataViews } from "../../lib/dataInvalidation";
 import { fmtPrice } from "../../lib/format";
 import { computeListingPricing, maxRecruiterPrice } from "../../lib/listing-pricing";
@@ -50,6 +51,12 @@ export function ListingApprovalPanel({ onRefreshStats }: Props) {
   useEffect(() => {
     void load();
   }, [sessionUser?.id, sessionUser?.adminRole]);
+
+  usePlatformRealtime(
+    useCallback((topics) => {
+      if (topics.has("admin") || topics.has("marketplace")) void load();
+    }, [load])
+  );
 
   const active = rows.find((r) => r.id === activeId) ?? null;
 
