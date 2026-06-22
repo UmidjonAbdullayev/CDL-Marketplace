@@ -10,6 +10,7 @@ import { PolicyAgreementCheckbox } from "../components/registration/PolicyAgreem
 import { RegistrationProgress } from "../components/registration/RegistrationProgress";
 import { SoloRecruiterRegistrationForm } from "../components/registration/SoloRecruiterRegistrationForm";
 import { useApp } from "../context/AppContext";
+import { CARRIER_PLANS, getWhopCheckoutUrl } from "../lib/carrier-plans";
 import { POLICY_VERSION } from "../lib/policies";
 import { validateEmail, validateProfileStep, type FieldErrors } from "../lib/registration-validation";
 import { sessionFromAccount } from "../lib/session";
@@ -85,7 +86,7 @@ export default function RegisterPage() {
   const [carrierProfile, setCarrierProfile] = useState<CarrierProfile>(EMPTY_CARRIER);
   const [agencyProfile, setAgencyProfile] = useState<AgencyProfile>(EMPTY_AGENCY);
   const [soloProfile, setSoloProfile] = useState<SoloRecruiterProfile>(EMPTY_SOLO);
-  const [selectedPlan, setSelectedPlan] = useState<CarrierPlanId>("growth");
+  const [selectedPlan, setSelectedPlan] = useState<CarrierPlanId>("free");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [policyAccepted, setPolicyAccepted] = useState(false);
@@ -162,11 +163,17 @@ export default function RegisterPage() {
         { userAgent: navigator.userAgent }
       );
       signIn(await sessionForAccount(result.account));
+      const checkoutUrl =
+        accountType === "carrier" && selectedPlan !== "free" ? getWhopCheckoutUrl(selectedPlan) : null;
+      if (checkoutUrl) {
+        window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+      }
       navigate("/register/success", {
         state: {
           accountType,
           status: result.status,
-          plan: accountType === "carrier" ? selectedPlan : null
+          plan: accountType === "carrier" ? selectedPlan : null,
+          checkoutUrl
         }
       });
     } catch {
@@ -366,10 +373,12 @@ export default function RegisterPage() {
               ) : null}
 
               {step === 3 && accountType === "carrier" ? (
-                <section>
-                  <h3 className="t-card" style={{ marginBottom: 8 }}>Select your plan</h3>
-                  <p className="t-secondary" style={{ marginBottom: 16 }}>Choose how you want to access the marketplace and CRM tools.</p>
-                  <CarrierPlanSelector value={selectedPlan} onChange={setSelectedPlan} />
+                <section className="permissions-info card" style={{ padding: 16, background: "var(--bg)" }}>
+                  <h3 className="t-card" style={{ marginBottom: 8 }}>Carrier marketplace access</h3>
+                  <p className="t-secondary">
+                    After registration you will choose a plan. Paid plans require Whop checkout; a platform manager
+                    verifies payment before your full hire limits unlock.
+                  </p>
                 </section>
               ) : null}
 
@@ -399,10 +408,25 @@ export default function RegisterPage() {
 
               {step === 5 ? (
                 <section>
-                  <h3 className="t-card" style={{ marginBottom: 12 }}>Review &amp; submit</h3>
+                  {accountType === "carrier" ? (
+                    <>
+                      <h3 className="t-card" style={{ marginBottom: 8 }}>Choose your plan</h3>
+                      <p className="t-secondary" style={{ marginBottom: 16 }}>
+                        Select a plan to finish registration. Paid plans open Whop checkout in a new tab after your
+                        account is created.
+                      </p>
+                      <CarrierPlanSelector value={selectedPlan} onChange={setSelectedPlan} />
+                    </>
+                  ) : null}
+                  <h3 className="t-card" style={{ marginBottom: 12, marginTop: accountType === "carrier" ? 24 : 0 }}>Review &amp; submit</h3>
                   <div className="reg-review-summary">
                     <div><span className="t-secondary">Account type</span><strong>{accountType?.replace("_", " ")}</strong></div>
-                    {accountType === "carrier" ? <div><span className="t-secondary">Plan</span><strong>{selectedPlan}</strong></div> : null}
+                    {accountType === "carrier" ? (
+                      <div>
+                        <span className="t-secondary">Plan</span>
+                        <strong>{CARRIER_PLANS.find((p) => p.id === selectedPlan)?.name ?? selectedPlan}</strong>
+                      </div>
+                    ) : null}
                     <div><span className="t-secondary">Policy version</span><strong>{POLICY_VERSION}</strong></div>
                     <div><span className="t-secondary">Policies accepted</span><strong>{policyAccepted ? "Yes" : "No"}</strong></div>
                   </div>

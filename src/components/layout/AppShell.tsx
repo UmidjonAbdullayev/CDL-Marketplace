@@ -1,18 +1,36 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { Modal } from "./Modal";
 import { ToastContainer } from "./ToastContainer";
 import { StickyUpgradeBanner } from "./StickyUpgradeBanner";
+import { PaymentProcessingBanner } from "../billing/PaymentProcessingBanner";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
+import { canActAsCarrier, isSellerNav } from "../../lib/account-capabilities";
+import {
+  isOrderSoundUnlocked,
+  useRecruiterOrderAlert
+} from "../../hooks/useRecruiterOrderAlert";
 import { shouldLaunchMarketplaceSearch } from "../../lib/search-navigation";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { debouncedSearch, isSignedIn, setSearchQuery } = useApp();
+  const { debouncedSearch, isSignedIn, setSearchQuery, sessionUser, showToast } = useApp();
   const { appLoading } = useExchangeData();
+  const isRecruiter = isSellerNav(sessionUser);
+
+  const onNewOrder = useCallback(
+    (dealId: string) => {
+      if (!isOrderSoundUnlocked()) {
+        showToast(`New order on deal ${dealId} — click anywhere on the page to enable sounds`, "success");
+      }
+    },
+    [showToast]
+  );
+
+  useRecruiterOrderAlert(sessionUser, isRecruiter ? onNewOrder : undefined);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -64,6 +82,11 @@ export function AppShell() {
       <div className="main">
         <Topbar onToggleSidebar={() => setSidebarOpen((v) => !v)} />
         <div className="content" id="content">
+          {canActAsCarrier(sessionUser) && sessionUser ? (
+            <div className="content-banner-wrap">
+              <PaymentProcessingBanner plan={sessionUser.selectedPlan} status={sessionUser.status} />
+            </div>
+          ) : null}
           <Outlet />
         </div>
       </div>

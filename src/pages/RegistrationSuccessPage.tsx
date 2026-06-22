@@ -1,13 +1,15 @@
-import { CheckCircle2, CreditCard, Eye, Truck } from "lucide-react";
+import { CheckCircle2, CreditCard, ExternalLink, Eye, Truck } from "lucide-react";
 import { useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { carrierPlanLabel, getWhopCheckoutUrl } from "../lib/carrier-plans";
 import type { AccountType, CarrierPlanId, RegistrationStatus } from "../types/registration";
 
 type SuccessState = {
   accountType: AccountType;
   status: RegistrationStatus;
   plan: CarrierPlanId | null;
+  checkoutUrl?: string | null;
 };
 
 export default function RegistrationSuccessPage() {
@@ -37,6 +39,7 @@ export default function RegistrationSuccessPage() {
   const isPreview = state.status === "active_preview";
   const isPendingPayment = state.status === "pending_payment";
   const isPendingReview = state.status === "pending_review";
+  const checkoutUrl = state.checkoutUrl ?? (state.plan ? getWhopCheckoutUrl(state.plan) : null);
 
   return (
     <div className="register-success-page">
@@ -46,15 +49,17 @@ export default function RegistrationSuccessPage() {
 
         {isCarrier ? (
           <>
-            <p className="t-secondary" style={{ margin: "12px 0 20px", maxWidth: 480 }}>
-              Your carrier account has been created. Choose a plan or continue in Free Preview Mode.
+            <p className="t-secondary" style={{ margin: "12px 0 20px", maxWidth: 520 }}>
+              Your carrier account is ready. {isPendingPayment
+                ? "Complete Whop checkout, then return here — your dashboard will show payment processing until a manager activates your plan."
+                : "You can explore the marketplace on the free preview."}
             </p>
             {isPreview ? (
               <div className="success-status-box">
                 <Eye className="icon-md" />
                 <div>
-                  <strong>Free Preview Mode active</strong>
-                  <p className="t-caption t-secondary">Browse limited marketplace previews. Upgrade to start hiring processes and unlock CRM tools.</p>
+                  <strong>Free Preview active</strong>
+                  <p className="t-caption t-secondary">Browse the marketplace with one lifetime hire slot. Upgrade anytime from Pricing.</p>
                 </div>
               </div>
             ) : null}
@@ -62,8 +67,11 @@ export default function RegistrationSuccessPage() {
               <div className="success-status-box">
                 <CreditCard className="icon-md" />
                 <div>
-                  <strong>Plan selected — payment pending</strong>
-                  <p className="t-caption t-secondary">Your {state.plan} plan will activate after payment is connected.</p>
+                  <strong>{carrierPlanLabel(state.plan)} — payment processing</strong>
+                  <p className="t-caption t-secondary">
+                    Finish checkout on Whop if you have not already. Until a platform manager confirms payment, you are
+                    limited to one hire (active or completed).
+                  </p>
                 </div>
               </div>
             ) : null}
@@ -85,13 +93,20 @@ export default function RegistrationSuccessPage() {
         ) : null}
 
         <div className="register-success-actions">
-          <button type="button" className="btn btn-primary" onClick={() => navigate("/marketplace")}>
-            {isPreview ? "Explore marketplace preview" : "Go to marketplace"}
+          {isPendingPayment && checkoutUrl ? (
+            <a href={checkoutUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+              <ExternalLink className="icon-sm" /> Complete payment on Whop
+            </a>
+          ) : null}
+          <button type="button" className="btn btn-primary" onClick={() => navigate("/dashboard")}>
+            Go to dashboard
           </button>
           {isCarrier && isPreview ? (
             <button type="button" className="btn btn-secondary" onClick={() => navigate("/pricing")}>View paid plans</button>
           ) : null}
-          <Link to="/dashboard" className="btn btn-ghost">Continue to dashboard</Link>
+          <button type="button" className="btn btn-ghost" onClick={() => navigate("/marketplace")}>
+            {isPreview ? "Explore marketplace preview" : "Go to marketplace"}
+          </button>
         </div>
       </div>
     </div>

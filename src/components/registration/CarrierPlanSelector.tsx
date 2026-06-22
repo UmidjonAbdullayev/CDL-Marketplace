@@ -20,6 +20,9 @@ export function CarrierPlanSelector({ value, onChange }: Props) {
           {plan.popular ? <span className="carrier-plan-badge">Most Popular</span> : null}
           <h4>{plan.name}</h4>
           <div className="carrier-plan-price">{plan.priceLabel}</div>
+          {plan.checkoutUrl ? (
+            <p className="carrier-plan-checkout-hint t-caption t-secondary">Paid via Whop after registration</p>
+          ) : null}
           <ul>
             {plan.features.map((f) => (
               <li key={f.text} className={f.locked ? "locked" : ""}>

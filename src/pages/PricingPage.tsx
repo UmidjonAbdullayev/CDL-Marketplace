@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { canActAsCarrier, isPlatformStaff } from "../lib/account-capabilities";
-import { CARRIER_PLANS } from "../lib/carrier-plans";
+import { CARRIER_PLANS, carrierPlanLabel, getWhopCheckoutUrl } from "../lib/carrier-plans";
 import { fmtPrice } from "../lib/format";
+import { sessionFromAccount } from "../lib/session";
 import { isSupabaseConfigured } from "../lib/supabase";
+import { fetchCompanyById } from "../services/company";
 import { fetchBillingHistory, type BillingRow } from "../services/compliance";
+import { fetchRegistrationById, updateRegistrationPlan } from "../services/registration";
+import type { CarrierPlanId } from "../types/registration";
 
 const FEATURED_FEE = 10;
 
@@ -99,15 +104,28 @@ function BillingHistoryTable({ rows }: { rows: BillingRow[] }) {
   );
 }
 
+function planStatusBadge(status: string): { label: string; className: string } {
+  if (status === "pending_payment") return { label: "Payment processing", className: "badge-yellow" };
+  if (status === "active_preview") return { label: "Free preview", className: "badge-blue" };
+  return { label: "Active", className: "badge-green" };
+}
+
 function CarrierPlansPricing({
+  accountId,
   currentPlanId,
-  showToast
+  accountStatus,
+  showToast,
+  signIn
 }: {
+  accountId: string;
   currentPlanId: string;
+  accountStatus: string;
   showToast: (msg: string, type?: "" | "success" | "error") => void;
+  signIn: (user: ReturnType<typeof sessionFromAccount>) => void;
 }) {
   const [billing, setBilling] = useState<BillingRow[]>([]);
   const [billingLoading, setBillingLoading] = useState(isSupabaseConfigured);
+  const [upgrading, setUpgrading] = useState<CarrierPlanId | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -121,6 +139,39 @@ function CarrierPlansPricing({
   }, []);
 
   const currentPlan = CARRIER_PLANS.find((p) => p.id === currentPlanId) ?? CARRIER_PLANS[0];
+  const statusBadge = planStatusBadge(accountStatus);
+  const isPendingPayment = accountStatus === "pending_payment";
+
+  const refreshSession = async () => {
+    const account = await fetchRegistrationById(accountId);
+    if (!account) return;
+    const company = account.company_id ? await fetchCompanyById(account.company_id) : null;
+    signIn(sessionFromAccount(account, company));
+  };
+
+  const handlePlanSelect = async (plan: CarrierPlanId) => {
+    if (plan === currentPlanId && !isPendingPayment) return;
+    if (!isSupabaseConfigured) {
+      showToast(`Upgrade to ${carrierPlanLabel(plan)} (demo)`, "success");
+      return;
+    }
+    setUpgrading(plan);
+    try {
+      await updateRegistrationPlan(accountId, plan);
+      await refreshSession();
+      const checkoutUrl = getWhopCheckoutUrl(plan);
+      if (checkoutUrl) {
+        window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+        showToast("Checkout opened in a new tab. Return here after payment — a manager will activate your plan.", "success");
+      } else {
+        showToast("Plan updated to Free preview.", "success");
+      }
+    } catch {
+      showToast("Could not update plan. Try again or contact support.", "error");
+    } finally {
+      setUpgrading(null);
+    }
+  };
 
   return (
     <>
@@ -132,8 +183,14 @@ function CarrierPlansPricing({
               <strong style={{ fontSize: 18 }}>{currentPlan.name}</strong>
               <div className="t-secondary" style={{ marginTop: 4 }}>{currentPlan.priceLabel}</div>
             </div>
-            <span className="badge badge-blue">Active</span>
+            <span className={`badge ${statusBadge.className}`}>{statusBadge.label}</span>
           </div>
+          {isPendingPayment ? (
+            <p className="t-caption t-secondary" style={{ marginTop: 12 }}>
+              Until payment is confirmed you are limited to one hire (active or completed). Use the banner above to
+              reopen Whop checkout.
+            </p>
+          ) : null}
           <ul style={{ marginTop: 16, paddingLeft: 20, lineHeight: 1.8, fontSize: 13 }}>
             {currentPlan.features.map((f) => (
               <li key={f.text} style={{ color: f.locked ? "var(--gray-400)" : undefined }}>
@@ -146,19 +203,22 @@ function CarrierPlansPricing({
 
       <div className="page-header centered" style={{ marginBottom: 24 }}>
         <h3>Available Plans</h3>
-        <p className="t-secondary">Choose the plan that fits your hiring volume and CRM needs.</p>
+        <p className="t-secondary">Paid plans bill through Whop. A platform manager verifies payment before full limits unlock.</p>
       </div>
 
       <div className="pricing-grid">
         {CARRIER_PLANS.map((plan) => {
-          const isCurrent = plan.id === currentPlanId;
+          const isCurrent = plan.id === currentPlanId && !isPendingPayment;
+          const isSelectedPending = isPendingPayment && plan.id === currentPlanId;
+          const checkoutUrl = getWhopCheckoutUrl(plan.id);
           return (
             <div key={plan.id} className={`pricing-card ${plan.popular ? "featured" : ""} ${isCurrent ? "current-plan" : ""}`}>
               {plan.popular ? <div className="badge badge-blue" style={{ marginBottom: 8 }}>Most Popular</div> : null}
               {isCurrent ? <div className="badge badge-green" style={{ marginBottom: 8 }}>Current Plan</div> : null}
+              {isSelectedPending ? <div className="badge badge-yellow" style={{ marginBottom: 8 }}>Awaiting confirmation</div> : null}
               <h3>{plan.name}</h3>
               <div className="price">{plan.price === 0 ? "$0" : fmtPrice(plan.price)}</div>
-              <div className="period">{plan.price === 0 ? "Browse preview" : "/month"}</div>
+              <div className="period">{plan.price === 0 ? "Browse preview" : "/month via Whop"}</div>
               <ul>
                 {plan.features.map((f) => (
                   <li key={f.text} style={{ color: f.locked ? "var(--gray-400)" : undefined }}>
@@ -166,15 +226,25 @@ function CarrierPlansPricing({
                   </li>
                 ))}
               </ul>
-              <button
-                className={`btn ${isCurrent ? "btn-secondary" : "btn-primary"}`}
-                style={{ width: "100%" }}
-                type="button"
-                disabled={isCurrent}
-                onClick={() => showToast(isCurrent ? "Already on this plan" : `Upgrade to ${plan.name} (demo)`, "success")}
-              >
-                {isCurrent ? "Current Plan" : `Upgrade to ${plan.name}`}
-              </button>
+              {isCurrent ? (
+                <button className="btn btn-secondary" style={{ width: "100%" }} type="button" disabled>
+                  Current Plan
+                </button>
+              ) : isSelectedPending && checkoutUrl ? (
+                <a href={checkoutUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ width: "100%" }}>
+                  <ExternalLink className="icon-sm" /> Complete Whop checkout
+                </a>
+              ) : (
+                <button
+                  className="btn btn-primary"
+                  style={{ width: "100%" }}
+                  type="button"
+                  disabled={upgrading !== null}
+                  onClick={() => void handlePlanSelect(plan.id)}
+                >
+                  {upgrading === plan.id ? "Updating…" : plan.price === 0 ? `Switch to ${plan.name}` : `Choose ${plan.name}`}
+                </button>
+              )}
             </div>
           );
         })}
@@ -188,10 +258,11 @@ function CarrierPlansPricing({
 }
 
 export default function PricingPage() {
-  const { showToast, sessionUser } = useApp();
+  const { showToast, sessionUser, signIn } = useApp();
   const isCarrier = canActAsCarrier(sessionUser);
   const isStaff = isPlatformStaff(sessionUser);
   const currentPlanId = sessionUser?.selectedPlan ?? (isStaff ? "pro_fleet" : "free");
+  const accountStatus = sessionUser?.status ?? "active_preview";
 
   return (
     <div className="page active">
@@ -206,8 +277,14 @@ export default function PricingPage() {
         </p>
       </div>
 
-      {isCarrier ? (
-        <CarrierPlansPricing currentPlanId={currentPlanId} showToast={showToast} />
+      {isCarrier && sessionUser ? (
+        <CarrierPlansPricing
+          accountId={sessionUser.id}
+          currentPlanId={currentPlanId}
+          accountStatus={accountStatus}
+          showToast={showToast}
+          signIn={signIn}
+        />
       ) : (
         <FeaturedListingPricing showToast={showToast} />
       )}

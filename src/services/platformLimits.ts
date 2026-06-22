@@ -1,5 +1,8 @@
 import { getActiveCompanyId } from "../lib/activeCompany";
+import { activeHireLimitForPlan } from "../lib/carrier-plans";
 import { supabase } from "../lib/supabase";
+import { fetchCarrierBillingByCompany } from "./registration";
+import type { CarrierPlanId, RegistrationStatus } from "../types/registration";
 
 /** Default caps before any completed deal (build trust). */
 export const STARTER_LIMITS = {
@@ -13,7 +16,7 @@ export const TRUSTED_LIMITS = {
   recruiterActiveListings: 10
 } as const;
 
-export type LimitTier = "starter" | "trusted" | "custom";
+export type LimitTier = "starter" | "trusted" | "custom" | "plan";
 
 export type CompanyLimitSnapshot = {
   companyId: string;
@@ -24,6 +27,9 @@ export type CompanyLimitSnapshot = {
   completedDeals: number;
   customMaxHires: number | null;
   customMaxListings: number | null;
+  carrierPlan?: CarrierPlanId | null;
+  carrierStatus?: RegistrationStatus | null;
+  lifetimeDealCap?: boolean;
 };
 
 export class PlatformLimitError extends Error {
@@ -70,6 +76,16 @@ export async function countActiveHires(buyerCompanyId: string): Promise<number> 
   return (data ?? []).filter((d) => isActiveDeal(d.status, d.hiring_stage)).length;
 }
 
+export async function countTotalBuyerDeals(buyerCompanyId: string): Promise<number> {
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from("deals")
+    .select("id", { count: "exact", head: true })
+    .eq("buyer_company_id", buyerCompanyId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function countActiveListings(sellerCompanyId: string): Promise<number> {
   if (!supabase) return 0;
   const { count, error } = await supabase
@@ -102,34 +118,65 @@ async function fetchCompanyLimitOverrides(companyId: string): Promise<{
   };
 }
 
-function defaultHireLimit(completedAsBuyer: number, custom: number | null): { limit: number; tier: LimitTier } {
-  if (custom != null && custom >= 0) return { limit: custom, tier: "custom" };
-  if (completedAsBuyer >= 1) return { limit: TRUSTED_LIMITS.carrierActiveHires, tier: "trusted" };
-  return { limit: STARTER_LIMITS.carrierActiveHires, tier: "starter" };
-}
-
 function defaultListingLimit(completedAsSeller: number, custom: number | null): { limit: number; tier: LimitTier } {
   if (custom != null && custom >= 0) return { limit: custom, tier: "custom" };
   if (completedAsSeller >= 1) return { limit: TRUSTED_LIMITS.recruiterActiveListings, tier: "trusted" };
   return { limit: STARTER_LIMITS.recruiterActiveListings, tier: "starter" };
 }
 
+function usesLifetimeDealCap(status: RegistrationStatus | null, plan: CarrierPlanId | null): boolean {
+  if (status === "pending_payment") return true;
+  if (status === "active_preview" || !plan || plan === "free") return true;
+  return false;
+}
+
 export async function resolveHireLimit(buyerCompanyId: string): Promise<CompanyLimitSnapshot> {
-  const [overrides, used, completedDeals] = await Promise.all([
+  const [overrides, activeHires, completedDeals, totalDeals, billing] = await Promise.all([
     fetchCompanyLimitOverrides(buyerCompanyId),
     countActiveHires(buyerCompanyId),
-    countCompletedDeals(buyerCompanyId, "buyer")
+    countCompletedDeals(buyerCompanyId, "buyer"),
+    countTotalBuyerDeals(buyerCompanyId),
+    fetchCarrierBillingByCompany(buyerCompanyId)
   ]);
-  const { limit, tier } = defaultHireLimit(completedDeals, overrides.max_active_hires);
+
+  const plan = billing.plan ?? "free";
+  const status = billing.status;
+  const lifetimeCap = usesLifetimeDealCap(status, plan);
+
+  if (lifetimeCap) {
+    return {
+      companyId: buyerCompanyId,
+      role: "carrier",
+      tier: status === "pending_payment" ? "starter" : "starter",
+      limit: 1,
+      used: totalDeals,
+      completedDeals,
+      customMaxHires: overrides.max_active_hires,
+      customMaxListings: overrides.max_active_listings,
+      carrierPlan: plan,
+      carrierStatus: status,
+      lifetimeDealCap: true
+    };
+  }
+
+  const planLimit = activeHireLimitForPlan(plan);
+  const limit =
+    overrides.max_active_hires != null && overrides.max_active_hires >= 0
+      ? overrides.max_active_hires
+      : planLimit ?? 999;
+
   return {
     companyId: buyerCompanyId,
     role: "carrier",
-    tier,
+    tier: overrides.max_active_hires != null ? "custom" : "plan",
     limit,
-    used,
+    used: activeHires,
     completedDeals,
     customMaxHires: overrides.max_active_hires,
-    customMaxListings: overrides.max_active_listings
+    customMaxListings: overrides.max_active_listings,
+    carrierPlan: plan,
+    carrierStatus: status,
+    lifetimeDealCap: false
   };
 }
 
@@ -157,10 +204,20 @@ export async function assertCanStartHiring(buyerCompanyId?: string): Promise<Com
   const companyId = buyerCompanyId ?? getActiveCompanyId();
   const snapshot = await resolveHireLimit(companyId);
   if (snapshot.used >= snapshot.limit) {
-    const msg =
-      snapshot.tier === "starter"
-        ? `New carriers may only have ${snapshot.limit} active hire at a time until your first deal is completed. Complete your current hiring process or wait for it to finish.`
-        : `You have reached your limit of ${snapshot.limit} active hires. Complete an existing deal or contact platform support to request a higher limit.`;
+    let msg: string;
+    if (snapshot.lifetimeDealCap) {
+      if (snapshot.carrierStatus === "pending_payment") {
+        msg =
+          "Your payment is still being verified. Until your plan is activated you can only have one hire (active or completed). Complete Whop checkout or wait for manager confirmation.";
+      } else {
+        msg =
+          "Free preview accounts are limited to one hire total (active or completed). Upgrade to a paid plan on Pricing to hire more drivers.";
+      }
+    } else if (snapshot.limit >= 999) {
+      msg = "Unable to start a new hire. Contact platform support.";
+    } else {
+      msg = `You have reached your plan limit of ${snapshot.limit} active hire${snapshot.limit === 1 ? "" : "s"}. Complete an existing deal or upgrade your plan.`;
+    }
     throw new PlatformLimitError(msg, snapshot);
   }
   return snapshot;
@@ -260,10 +317,14 @@ export async function updateCompanyLimits(
 export function limitHint(snapshot: CompanyLimitSnapshot): string {
   const remaining = Math.max(0, snapshot.limit - snapshot.used);
   if (snapshot.role === "carrier") {
-    if (snapshot.tier === "starter") {
-      return `${remaining} of ${snapshot.limit} active hire${snapshot.limit === 1 ? "" : "s"} remaining. Complete your first deal to unlock up to ${TRUSTED_LIMITS.carrierActiveHires} concurrent hires.`;
+    if (snapshot.lifetimeDealCap) {
+      if (snapshot.carrierStatus === "pending_payment") {
+        return `${remaining} of ${snapshot.limit} hire slot remaining while payment is verified.`;
+      }
+      return `${remaining} of ${snapshot.limit} lifetime hire slot${snapshot.limit === 1 ? "" : "s"} on free preview.`;
     }
-    return `${remaining} of ${snapshot.limit} active hires remaining${snapshot.tier === "custom" ? " (manager override)" : ""}.`;
+    if (snapshot.limit >= 999) return "Unlimited active hires on your plan.";
+    return `${remaining} of ${snapshot.limit} active hire${snapshot.limit === 1 ? "" : "s"} remaining on your plan.`;
   }
   if (snapshot.tier === "starter") {
     return `${remaining} of ${snapshot.limit} listing slots remaining. Complete your first sale to list up to ${TRUSTED_LIMITS.recruiterActiveListings} drivers.`;

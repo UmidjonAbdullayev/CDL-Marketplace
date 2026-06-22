@@ -251,6 +251,46 @@ export async function updateRegistrationPlan(id: string, plan: CarrierPlanId): P
   if (error) throw error;
 }
 
+/** Manager confirms Whop payment received — activates paid carrier plan. */
+export async function confirmCarrierPayment(id: string): Promise<void> {
+  if (!supabase) return;
+  const { data, error: fetchErr } = await supabase
+    .from("registration_accounts")
+    .select("account_type, status, selected_plan, company_id")
+    .eq("id", id)
+    .single();
+  if (fetchErr || !data) throw fetchErr ?? new Error("Account not found");
+  if (data.account_type !== "carrier") throw new Error("Only carrier accounts have subscription payments");
+  if (data.status !== "pending_payment") throw new Error("Account is not awaiting payment confirmation");
+  if (!data.selected_plan || data.selected_plan === "free") throw new Error("No paid plan selected");
+
+  const { error } = await supabase
+    .from("registration_accounts")
+    .update({ status: "active", updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export type CarrierBillingContext = {
+  status: RegistrationStatus | null;
+  plan: CarrierPlanId | null;
+};
+
+export async function fetchCarrierBillingByCompany(companyId: string): Promise<CarrierBillingContext> {
+  if (!supabase || !companyId) return { status: null, plan: null };
+  const { data, error } = await supabase
+    .from("registration_accounts")
+    .select("status, selected_plan")
+    .eq("company_id", companyId)
+    .eq("account_type", "carrier")
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    status: (data?.status as RegistrationStatus) ?? null,
+    plan: (data?.selected_plan as CarrierPlanId) ?? null
+  };
+}
+
 export async function verifyRegistrationMc(id: string, verified: boolean): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase

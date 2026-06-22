@@ -2274,6 +2274,17 @@ tbody tr:hover td { background: var(--bg); }
 }
 .register-success-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
 
+.content-banner-wrap { padding: 16px 24px 0; }
+.payment-processing-banner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 18px; margin-bottom: 0; border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+}
+.payment-processing-banner-body { display: flex; gap: 12px; align-items: flex-start; flex: 1; min-width: 220px; }
+.payment-processing-icon { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
+.payment-processing-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.carrier-plan-checkout-hint { margin: 4px 0 8px; }
+
 .admin-reg-layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
 .admin-reg-detail { min-height: 360px; }
 .admin-reg-profile-json {

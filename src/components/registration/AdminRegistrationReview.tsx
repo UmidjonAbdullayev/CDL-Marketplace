@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePlatformRealtime } from "../../hooks/usePlatformRealtime";
-import { CheckCircle2, Shield, XCircle } from "lucide-react";
+import { CheckCircle2, CreditCard, Shield, XCircle } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { CARRIER_PLANS } from "../../lib/carrier-plans";
 import { fmtDate } from "../../lib/format";
 import {
   approveRegistration,
+  confirmCarrierPayment,
   displayAccountName,
   fetchRegistrationAccounts,
   rejectRegistration,
@@ -144,7 +145,17 @@ export function AdminRegistrationReview() {
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => void act(() => verifyRegistrationProfile(selected.id, !selected.profile_verified), selected.profile_verified ? "Profile unverified" : "Profile verified")}>
                   <Shield className="icon-sm" /> {selected.profile_verified ? "Unverify Profile" : "Verify Profile"}
                 </button>
-                <button type="button" className="btn btn-success btn-sm" onClick={() => void act(() => approveRegistration(selected.id), "Account approved")}>Approve</button>
+                {selected.account_type === "carrier" && selected.status === "pending_payment" ? (
+                  <button
+                    type="button"
+                    className="btn btn-success btn-sm"
+                    onClick={() => void act(() => confirmCarrierPayment(selected.id), "Whop payment confirmed — plan activated")}
+                  >
+                    <CreditCard className="icon-sm" /> Confirm Whop Payment
+                  </button>
+                ) : (
+                  <button type="button" className="btn btn-success btn-sm" onClick={() => void act(() => approveRegistration(selected.id), "Account approved")}>Approve</button>
+                )}
                 <button type="button" className="btn btn-danger btn-sm" onClick={() => void act(() => suspendRegistration(selected.id), "Account suspended")}>Suspend</button>
               </div>
 

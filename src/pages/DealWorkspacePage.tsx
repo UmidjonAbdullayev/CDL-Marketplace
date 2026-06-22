@@ -58,11 +58,18 @@ function fmtAvailability(avail: string): string {
   return fmtDate(avail);
 }
 
-function cdlScorePct(driver: Driver, card: DriverCard | null): number {
-  if (card?.hotScore && card.hotScore > 0) return card.hotScore;
-  if (driver.score === "green") return 93;
-  if (driver.score === "yellow") return 78;
-  return 65;
+function stableScoreInRange(seed: string, min: number, max: number): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return min + (Math.abs(h) % (max - min + 1));
+}
+
+function cdlScorePct(driver: Driver, card: DriverCard | null, listingId?: number | null): number {
+  const seed = String(listingId ?? `${driver.first}${driver.last}`);
+  if (card?.hotScore && card.hotScore >= 80 && card.hotScore <= 99) return card.hotScore;
+  if (driver.score === "green") return stableScoreInRange(seed, 92, 99);
+  if (driver.score === "yellow") return stableScoreInRange(seed, 86, 91);
+  return stableScoreInRange(seed, 80, 85);
 }
 
 function displayStatus(status: string): string {
@@ -332,7 +339,7 @@ export default function DealWorkspacePage() {
     );
   }
 
-  const scorePct = cdlScorePct(driver, driverCard ?? null);
+  const scorePct = cdlScorePct(driver, driverCard ?? null, deal.listing_id);
   const driverTypeTag = driverCard?.driverType ?? "Driver";
 
   const assignedAdmin = workspace?.assignedAdmin;
@@ -395,10 +402,11 @@ export default function DealWorkspacePage() {
           <div className="card-body">
             <h3>Seller representation agreement required</h3>
             <p className="t-secondary" style={{ marginBottom: 12 }}>
-              Buyer signed on {deal.buyer_signed_at ? fmtDate(deal.buyer_signed_at) : "—"} by {deal.buyer_signer_name}.
-              Countersign to open platform chat and document sharing.
+              {isRecruiterParty
+                ? `A carrier signed the recruiting agreement on ${deal.buyer_signed_at ? fmtDate(deal.buyer_signed_at) : "—"}. Countersign to open platform chat and document sharing.`
+                : `Buyer signed on ${deal.buyer_signed_at ? fmtDate(deal.buyer_signed_at) : "—"} by ${deal.buyer_signer_name}. Countersign to open platform chat and document sharing.`}
             </p>
-            {deal.buyer_company_id ? (
+            {deal.buyer_company_id && !isRecruiterParty ? (
               <div style={{ marginBottom: 16 }}>
                 <CompanyReviewsPanel
                   companyId={deal.buyer_company_id}
@@ -553,26 +561,45 @@ export default function DealWorkspacePage() {
               {partyTab === "contracts" ? (
                 <div className="deal-contracts-panel">
                   <h4>Recruiting agreements</h4>
-                  <p>
-                    <strong>Buyer:</strong> {deal.companies_buyer?.name ?? "—"}
-                    {deal.buyer_signed_at
-                      ? ` — signed by ${deal.buyer_signer_name ?? "—"} on ${fmtDate(deal.buyer_signed_at)}`
-                      : " — pending signature"}
-                  </p>
-                  <p>
-                    <strong>Seller:</strong> {deal.companies_seller?.name ?? "—"}
-                    {deal.seller_signed_at
-                      ? ` — signed by ${deal.seller_signer_name ?? "—"} on ${fmtDate(deal.seller_signed_at)}`
-                      : " — pending signature"}
-                  </p>
+                  {isRecruiterParty ? (
+                    <>
+                      <p>
+                        <strong>Carrier:</strong>
+                        {deal.buyer_signed_at
+                          ? ` Signed on ${fmtDate(deal.buyer_signed_at)}`
+                          : " Pending signature"}
+                      </p>
+                      <p>
+                        <strong>Your listing:</strong>
+                        {deal.seller_signed_at
+                          ? ` You signed on ${fmtDate(deal.seller_signed_at)}`
+                          : " Awaiting your signature"}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        <strong>Buyer:</strong> {deal.companies_buyer?.name ?? "—"}
+                        {deal.buyer_signed_at
+                          ? ` — signed by ${deal.buyer_signer_name ?? "—"} on ${fmtDate(deal.buyer_signed_at)}`
+                          : " — pending signature"}
+                      </p>
+                      <p>
+                        <strong>Seller:</strong> {deal.companies_seller?.name ?? "—"}
+                        {deal.seller_signed_at
+                          ? ` — signed by ${deal.seller_signer_name ?? "—"} on ${fmtDate(deal.seller_signed_at)}`
+                          : " — pending signature"}
+                      </p>
+                    </>
+                  )}
                   <p className="deal-contract-fee">
                     <strong>{recruitmentFee.label}:</strong> {recruitmentFee.value}
                   </p>
                   <div className="contract-sign-status">
-                    <div>{deal.buyer_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Buyer signed</div>
-                    <div>{deal.seller_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} Seller signed</div>
+                    <div>{deal.buyer_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} {isRecruiterParty ? "Carrier signed" : "Buyer signed"}</div>
+                    <div>{deal.seller_signed_at ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <Clock className="icon-sm" />} {isRecruiterParty ? "You signed" : "Seller signed"}</div>
                   </div>
-                  {counterpartyCompanyId ? (
+                  {counterpartyCompanyId && !isRecruiterParty ? (
                     <div style={{ marginTop: 16 }}>
                       <h4>Partner reviews</h4>
                       <CompanyReviewsPanel
@@ -582,9 +609,13 @@ export default function DealWorkspacePage() {
                       />
                     </div>
                   ) : null}
-                  <h4 style={{ marginTop: 20 }}>Buyer agreement clauses</h4>
-                  <ul className="contract-clauses-compact">{BUYER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
-                  {deal.seller_signed_at ? (
+                  {!isRecruiterParty ? (
+                    <>
+                      <h4 style={{ marginTop: 20 }}>Buyer agreement clauses</h4>
+                      <ul className="contract-clauses-compact">{BUYER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>
+                    </>
+                  ) : null}
+                  {deal.seller_signed_at || isRecruiterParty ? (
                     <>
                       <h4 style={{ marginTop: 16 }}>Seller agreement clauses</h4>
                       <ul className="contract-clauses-compact">{SELLER_CONTRACT_CLAUSES.map((c) => <li key={c}>{c}</li>)}</ul>

@@ -3,9 +3,9 @@ import { Check } from "lucide-react";
 const STEPS = [
   "Account Type",
   "Profile Details",
-  "Plan / Permissions",
+  "Permissions",
   "Policy Agreement",
-  "Submit"
+  "Plan & Submit"
 ] as const;
 
 type Props = {

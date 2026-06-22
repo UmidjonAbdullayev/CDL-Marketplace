@@ -34,6 +34,13 @@ function nextAction(deal: HiringDealRow): string {
   return "Active hiring";
 }
 
+function dealFeeForParty(deal: HiringDealRow, companyId: string): number {
+  if (deal.seller_company_id === companyId && deal.driver_listings?.price != null) {
+    return deal.driver_listings.price;
+  }
+  return deal.amount;
+}
+
 export default function OngoingDealsPage() {
   const navigate = useNavigate();
   const { sessionUser } = useApp();
@@ -97,7 +104,11 @@ export default function OngoingDealsPage() {
         </div>
       ) : (
         <div className="ongoing-deals-list">
-          {deals.map((deal) => (
+          {deals.map((deal) => {
+            const isSeller = deal.seller_company_id === companyId;
+            const buyerPartyLabel = isSeller ? "Carrier" : (deal.companies_buyer?.name ?? "Buyer");
+            const sellerPartyLabel = isSeller ? "Your listing" : (deal.companies_seller?.name ?? "Seller");
+            return (
             <button
               key={deal.id}
               type="button"
@@ -113,19 +124,20 @@ export default function OngoingDealsPage() {
                     {deal.id}
                   </div>
                   <div className="ongoing-deal-parties t-caption t-secondary">
-                    {deal.companies_buyer?.name ?? "Buyer"} ↔ {deal.companies_seller?.name ?? "Seller"}
+                    {buyerPartyLabel} ↔ {sellerPartyLabel}
                   </div>
                 </div>
               </div>
               <div className="ongoing-deal-side">
                 <span className={`badge ${statusBadgeClass(deal.status)}`}>{deal.status}</span>
                 <span className="badge badge-gray">{partyRole(deal, companyId)}</span>
-                <div className="ongoing-deal-fee">{fmtRecruitingFee(deal.amount)} recruiting fee</div>
+                <div className="ongoing-deal-fee">{fmtRecruitingFee(dealFeeForParty(deal, companyId))} {isSeller ? "listing price" : "recruiting fee"}</div>
                 <div className="ongoing-deal-action t-caption">{nextAction(deal)}</div>
               </div>
               <ChevronRight className="icon-md ongoing-deal-chevron" />
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
