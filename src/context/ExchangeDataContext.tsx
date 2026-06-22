@@ -56,6 +56,7 @@ import {
   type AppNotification,
   type UpcomingAction
 } from "../services/notifications";
+import { fetchOngoingDealsUnreadCount } from "../services/dealViews";
 import { subscribePlatformRealtime, type RealtimeTopic } from "../services/realtime";
 import type { Driver, DriverCard, HotListing, ScoreFlag } from "../types";
 
@@ -155,7 +156,7 @@ function refreshMode(loadedAt: number): "skip" | "background" | "initial" {
 
 interface ExchangeDataValue {
   appLoading: boolean;
-  badges: { disputes: number; messages: number };
+  badges: { disputes: number; messages: number; ongoingDeals: number };
   notifications: AppNotification[];
   dismissAllNotifications: () => void;
   dismissNotification: (id: string) => void;
@@ -295,7 +296,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   );
 
   const [appLoading, setAppLoading] = useState(isSupabaseConfigured);
-  const [badges, setBadges] = useState({ disputes: 0, messages: 0 });
+  const [badges, setBadges] = useState({ disputes: 0, messages: 0, ongoingDeals: 0 });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [dismissedNotifIds, setDismissedNotifIds] = useState(readDismissedNotifications);
   const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriod>("7d");
@@ -408,13 +409,17 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
 
   const refreshNotifications = useCallback(async () => {
     try {
-      const [items, unread] = await Promise.all([fetchNotifications(), fetchUnreadMessageCount()]);
+      const [items, unread, ongoingUnread] = await Promise.all([
+        fetchNotifications(),
+        fetchUnreadMessageCount(),
+        fetchOngoingDealsUnreadCount(sessionUser)
+      ]);
       setNotifications(items);
-      setBadges((b) => ({ ...b, messages: unread }));
+      setBadges((b) => ({ ...b, messages: unread, ongoingDeals: ongoingUnread }));
     } catch (err) {
       console.error("Failed to load notifications", err);
     }
-  }, []);
+  }, [sessionUser]);
 
   const refreshCdlScoreStatus = useCallback(async () => {
     const verified = await fetchCdlScoreVerified();
@@ -607,7 +612,11 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     else setConversationsRefreshing(true);
 
     try {
-      const result = await fetchConversationsPage({ page: messagesPage, pageSize: DEFAULT_PAGE_SIZE });
+      const result = await fetchConversationsPage({
+        page: messagesPage,
+        pageSize: DEFAULT_PAGE_SIZE,
+        accountType: sessionUser?.accountType
+      });
       setConversations(result.items);
       setConversationsTotal(result.total);
       setConversationsTotalPages(result.totalPages);
@@ -624,7 +633,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
       setConversationsLoading(false);
       setConversationsRefreshing(false);
     }
-  }, [messagesPage, conversationsLoadedAt, conversations.length, activeConversationId]);
+  }, [messagesPage, conversationsLoadedAt, conversations.length, activeConversationId, sessionUser?.accountType]);
 
   const refreshConversationMessages = useCallback(async (force = false) => {
     if (!activeConversationId) {

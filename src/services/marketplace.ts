@@ -2,7 +2,9 @@ import { getActiveCompanyId } from "../lib/activeCompany";
 import type { DriverType } from "../lib/driver-types";
 import { supabase } from "../lib/supabase";
 import type { Driver, DriverCard, HotListing, Paginated, ScoreFlag } from "../types";
+import type { AccountType } from "../types/registration";
 import { computeListingPricing, displayPriceForViewer, type MarketplaceViewer, validateRecruiterListPrice } from "../lib/listing-pricing";
+import { avatarUrlFromProfileData } from "./adminProfiles";
 import { enrichMessagesWithAttachmentUrls, uploadChatAttachment } from "./chatAttachments";
 import { autoAssignListing } from "./platformAdmin";
 import { assertCanCreateListing } from "./platformLimits";
@@ -52,7 +54,7 @@ export const LISTING_CARD_SELECT =
   "id, first_name, last_name, state, years_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, companies (name, rating)";
 
 export const LISTING_DETAIL_SELECT =
-  `${LISTING_CARD_SELECT}, endorsements, phone, email, cdl_number, documents, notes, route_pref, status, views, hot_score, seller_company_id`;
+  `${LISTING_CARD_SELECT}, endorsements, phone, email, cdl_number, documents, notes, route_pref, status, views, hot_score, seller_company_id, assigned_admin_id`;
 
 export function unwrapRelation<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
@@ -628,8 +630,12 @@ export type ConversationSummary = {
   deal_id: string | null;
   buyer_company_id?: string;
   seller_company_id?: string | null;
+  channel_type?: string;
   companies: { name: string } | null;
   preview?: string;
+  driver_label?: string | null;
+  admin_name?: string | null;
+  admin_avatar_url?: string | null;
 };
 
 export type MessageRow = {
@@ -647,7 +653,7 @@ const MESSAGE_SELECT =
   "id, direction, body, created_at, sender_company_id, attachment_name, attachment_path";
 
 export async function fetchConversationsPage(
-  { page = 1, pageSize = DEFAULT_PAGE_SIZE }: PageParams = {}
+  { page = 1, pageSize = DEFAULT_PAGE_SIZE, accountType }: PageParams & { accountType?: AccountType } = {}
 ): Promise<Paginated<ConversationSummary>> {
   if (!supabase) return toPaginated([], 0, page, pageSize);
 
@@ -655,23 +661,83 @@ export async function fetchConversationsPage(
   const to = from + pageSize - 1;
 
   const companyId = getActiveCompanyId();
-  const { data, error, count } = await supabase
+  let query = supabase
     .from("conversations")
     .select(
       `id, subject, last_message_at, is_support, deal_id, buyer_company_id, seller_company_id, channel_type,
       companies:companies!conversations_seller_company_id_fkey (name)`,
       { count: "exact" }
     )
-    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
-    .in("channel_type", ["carrier_admin", "recruiter_admin"])
+    .eq("buyer_company_id", companyId);
+
+  if (accountType === "carrier") {
+    query = query.eq("channel_type", "carrier_admin");
+  } else if (accountType === "agency" || accountType === "solo_recruiter") {
+    query = query.eq("channel_type", "recruiter_admin");
+  } else {
+    query = query.in("channel_type", ["carrier_admin", "recruiter_admin"]);
+  }
+
+  const { data, error, count } = await query
     .order("last_message_at", { ascending: false })
     .range(from, to);
   if (error) throw error;
 
-  const items = (data ?? []).map((c) => ({
+  const rawItems = (data ?? []).map((c) => ({
     ...c,
     companies: unwrapRelation(c.companies)
   })) as ConversationSummary[];
+
+  const dealIds = [...new Set(rawItems.map((c) => c.deal_id).filter(Boolean))] as string[];
+  const dealMeta = new Map<string, { driver_label: string; admin_name: string | null; admin_avatar_url: string | null }>();
+
+  if (dealIds.length) {
+    const { data: deals } = await supabase
+      .from("deals")
+      .select("id, listing_id, driver_listings ( first_name, last_name, assigned_admin_id )")
+      .in("id", dealIds);
+
+type ListingMeta = { first_name: string; last_name: string; assigned_admin_id: string | null };
+
+    const adminIds = new Set<string>();
+    for (const d of deals ?? []) {
+      const listing = unwrapRelation(d.driver_listings as ListingMeta | ListingMeta[] | null);
+      if (listing?.assigned_admin_id) adminIds.add(listing.assigned_admin_id);
+    }
+
+    const adminMap = new Map<string, { name: string; avatarUrl: string | null }>();
+    if (adminIds.size) {
+      const { data: admins } = await supabase
+        .from("registration_accounts")
+        .select("id, email, profile_data")
+        .in("id", [...adminIds]);
+      for (const a of admins ?? []) {
+        const profile = a.profile_data as { agencyName?: string; fullName?: string; companyName?: string };
+        const name = profile.agencyName ?? profile.fullName ?? profile.companyName ?? a.email;
+        adminMap.set(a.id, { name, avatarUrl: avatarUrlFromProfileData(profile) });
+      }
+    }
+
+    for (const d of deals ?? []) {
+      const listing = unwrapRelation(d.driver_listings as ListingMeta | ListingMeta[] | null);
+      const admin = listing?.assigned_admin_id ? adminMap.get(listing.assigned_admin_id) : null;
+      dealMeta.set(d.id, {
+        driver_label: listing ? `${listing.first_name} ${listing.last_name.charAt(0)}.` : "Driver",
+        admin_name: admin?.name ?? null,
+        admin_avatar_url: admin?.avatarUrl ?? null
+      });
+    }
+  }
+
+  const items = rawItems.map((c) => {
+    const meta = c.deal_id ? dealMeta.get(c.deal_id) : null;
+    return {
+      ...c,
+      driver_label: meta?.driver_label ?? null,
+      admin_name: meta?.admin_name ?? null,
+      admin_avatar_url: meta?.admin_avatar_url ?? null
+    };
+  });
 
   return toPaginated(items, count, page, pageSize);
 }

@@ -138,7 +138,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             prev.adminRole !== fresh.adminRole ||
             prev.accountType !== fresh.accountType ||
             prev.companyId !== fresh.companyId ||
-            prev.plan !== fresh.plan;
+            prev.plan !== fresh.plan ||
+            prev.profileVerified !== fresh.profileVerified ||
+            prev.status !== fresh.status;
           if (changed) {
             writeSession(fresh);
             return fresh;

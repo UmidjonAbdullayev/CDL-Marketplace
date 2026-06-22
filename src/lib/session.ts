@@ -9,6 +9,7 @@ export type SessionUser = {
   email: string;
   accountType: AccountType;
   status: RegistrationStatus;
+  profileVerified: boolean;
   companyId: string;
   isAdmin: boolean;
   adminRole: AdminRole;
@@ -69,6 +70,7 @@ export function sessionFromAccount(
     email: account.email,
     accountType: account.account_type,
     status: account.status,
+    profileVerified: Boolean(account.profile_verified),
     selectedPlan: account.account_type === "carrier" ? account.selected_plan ?? "free" : null,
     companyId: account.company_id ?? "",
     isAdmin: Boolean(account.is_admin),
@@ -111,6 +113,9 @@ export function initSession(): SessionUser | null {
   }
   if (user.adminRole === "manager" || user.adminRole === "admin") {
     user = { ...user, isAdmin: true };
+  }
+  if (user.profileVerified === undefined) {
+    user = { ...user, profileVerified: false };
   }
   return user;
 }

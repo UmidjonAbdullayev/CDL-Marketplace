@@ -16,6 +16,7 @@ export type MessengerBubble = {
 type MessengerPanelProps = {
   title: string;
   live?: boolean;
+  hideHeader?: boolean;
   messages: MessengerBubble[];
   emptyMessage?: string;
   loading?: boolean;
@@ -32,6 +33,7 @@ type MessengerPanelProps = {
 export function MessengerPanel({
   title,
   live = false,
+  hideHeader = false,
   messages,
   emptyMessage = "No messages yet.",
   loading = false,
@@ -107,10 +109,12 @@ export function MessengerPanel({
 
   return (
     <div className={`messenger-panel ${className}`.trim()}>
-      <div className="messenger-panel-header">
-        <span className="messenger-panel-title">{title}</span>
-        {live ? <span className="messenger-live t-caption">Live</span> : null}
-      </div>
+      {!hideHeader ? (
+        <div className="messenger-panel-header">
+          <span className="messenger-panel-title">{title}</span>
+          {live ? <span className="messenger-live t-caption">Live</span> : null}
+        </div>
+      ) : null}
 
       <div ref={messagesContainerRef} className="messenger-panel-messages">
         {loading ? (

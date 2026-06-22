@@ -3,13 +3,17 @@ import { Award, ShieldCheck, Star } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { accountTypeLabel, canActAsCarrier, isPlatformStaff } from "../lib/account-capabilities";
 import { PageHeader, VerifiedBadge } from "../lib/badges";
+import { AvatarUploadButton } from "../components/ui/AvatarUploadButton";
 import { fetchCompanyById } from "../services/company";
 import { fetchRegistrationById } from "../services/registration";
+import { avatarUrlFromProfileData, uploadAdminAvatar } from "../services/adminProfiles";
 import type { AgencyProfile, CarrierProfile, SoloRecruiterProfile } from "../types/registration";
 
 export default function ProfilePage() {
-  const { sessionUser } = useApp();
+  const { sessionUser, showToast } = useApp();
   const [loading, setLoading] = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [profileVerified, setProfileVerified] = useState(false);
   const [companyStats, setCompanyStats] = useState({
     rating: 0,
     leadsSold: 0,
@@ -27,6 +31,8 @@ export default function ProfilePage() {
       try {
         const account = await fetchRegistrationById(sessionUser.id);
         if (!account) return;
+        setProfileVerified(Boolean(account.profile_verified));
+        setAvatarUrl(avatarUrlFromProfileData(account.profile_data));
 
         if (account.company_id) {
           const company = await fetchCompanyById(account.company_id);
@@ -108,10 +114,24 @@ export default function ProfilePage() {
     <div className="page active">
       <PageHeader title={profileTitle} desc={profileDesc} />
       <div className="card"><div className="profile-header">
-        <div className="profile-avatar">{initials}</div>
+        {staff ? (
+          <AvatarUploadButton
+            name={displayName}
+            initials={initials}
+            avatarUrl={avatarUrl}
+            onUpload={async (file) => {
+              if (!sessionUser?.id) return;
+              const url = await uploadAdminAvatar(sessionUser.id, file);
+              setAvatarUrl(url);
+              showToast("Profile photo updated", "success");
+            }}
+          />
+        ) : (
+          <div className="profile-avatar">{initials}</div>
+        )}
         <div style={{ flex: 1 }}><h3 className="t-section">{displayName}</h3>
           <div style={{ display: "flex", gap: "var(--s2)", margin: "var(--s2) 0", flexWrap: "wrap" }}>
-            {sessionUser?.status === "active" ? <VerifiedBadge text="Verified Account" /> : null}
+            {!staff && profileVerified ? <VerifiedBadge text="Verified Account" /> : null}
             {staff ? (
               <span className="badge badge-purple"><ShieldCheck className="icon-sm" /> {accountTypeLabel(sessionUser)}</span>
             ) : actsAsCarrier ? (

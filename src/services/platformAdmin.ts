@@ -191,6 +191,7 @@ export async function approveListingWithCarrierPrice(
     .from("driver_listings")
     .update({
       status: "active",
+      verified: true,
       admin_markup: markup,
       carrier_price: carrierPrice,
       platform_fee: listing.platform_fee ?? Math.round(listing.price * 0.15),

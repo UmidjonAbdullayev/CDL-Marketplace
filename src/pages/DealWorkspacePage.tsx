@@ -10,8 +10,10 @@ import {
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MessengerPanel } from "../components/chat/MessengerPanel";
+import { AdminAvatar } from "../components/ui/AdminAvatar";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 import { useApp } from "../context/AppContext";
+import { useExchangeData } from "../context/ExchangeDataContext";
 import { isPlatformStaff } from "../lib/account-capabilities";
 import { ScoreBadge, VerifiedBadge } from "../lib/badges";
 import {
@@ -37,6 +39,7 @@ import {
   type DealMessageRow,
   type DealWorkspace
 } from "../services/hiring";
+import { markDealViewed } from "../services/dealViews";
 import type { Driver, DriverCard } from "../types";
 
 type PartyTab = "pipeline" | "contracts" | "documents" | "activity";
@@ -81,6 +84,7 @@ export default function DealWorkspacePage() {
   const { dealId } = useParams();
   const navigate = useNavigate();
   const { showToast, sessionUser, openDisputeModal } = useApp();
+  const { refreshNotifications } = useExchangeData();
 
   const [workspace, setWorkspace] = useState<DealWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -299,6 +303,12 @@ export default function DealWorkspacePage() {
     return (workspace?.events ?? []).filter((e) => e.stage !== "admin_note").slice().reverse();
   }, [workspace?.events]);
 
+  useEffect(() => {
+    if (!dealId || !myCompanyId || loading || !deal) return;
+    markDealViewed(myCompanyId, dealId);
+    void refreshNotifications();
+  }, [dealId, myCompanyId, deal?.updated_at, loading, refreshNotifications]);
+
   if (loading) {
     return <div className="page active"><p className="t-secondary">Loading deal workspace...</p></div>;
   }
@@ -325,10 +335,15 @@ export default function DealWorkspacePage() {
   const scorePct = cdlScorePct(driver, driverCard ?? null);
   const driverTypeTag = driverCard?.driverType ?? "Driver";
 
+  const assignedAdmin = workspace?.assignedAdmin;
+  const adminChatLabel = assignedAdmin?.name ?? "Platform Admin";
+  const adminInitials = assignedAdmin?.initials ?? "PA";
+
   const chatPanel = chatOpen ? (
     <MessengerPanel
       className="messenger-panel--party-rail"
-      title="Chat with Admin"
+      title={adminChatLabel}
+      hideHeader
       live
       messages={messages.map((m) => ({
         id: m.id,
@@ -659,7 +674,18 @@ export default function DealWorkspacePage() {
           <div className="card deal-party-chat-card">
             <div className="deal-party-chat-head">
               <h3>Chat with Admin</h3>
-              <span className="deal-admin-online"><span className="deal-online-dot" /> Platform team</span>
+              <div className="deal-admin-presence">
+                <AdminAvatar
+                  name={adminChatLabel}
+                  initials={adminInitials}
+                  avatarUrl={assignedAdmin?.avatarUrl}
+                  size="sm"
+                />
+                <div className="deal-admin-presence-text">
+                  <strong>{adminChatLabel}</strong>
+                  <span className="deal-admin-online"><span className="deal-online-dot" /> Assigned admin</span>
+                </div>
+              </div>
             </div>
             {chatPanel}
           </div>

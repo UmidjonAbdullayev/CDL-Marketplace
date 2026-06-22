@@ -2,12 +2,14 @@ import { useEffect, useState, useCallback } from "react";
 import { ChevronRight, Handshake, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { useExchangeData } from "../context/ExchangeDataContext";
 import { PageHeader } from "../lib/badges";
 import { statusBadgeClass } from "../lib/hiring";
 import { fmtRecruitingFee, fullName } from "../lib/format";
 import { isPlatformStaff } from "../lib/account-capabilities";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchOngoingDeals, type HiringDealRow } from "../services/hiring";
+import { markOngoingDealsViewed } from "../services/dealViews";
 import { usePlatformRealtime } from "../hooks/usePlatformRealtime";
 
 function driverName(deal: HiringDealRow): string {
@@ -35,6 +37,7 @@ function nextAction(deal: HiringDealRow): string {
 export default function OngoingDealsPage() {
   const navigate = useNavigate();
   const { sessionUser } = useApp();
+  const { refreshNotifications } = useExchangeData();
   const [deals, setDeals] = useState<HiringDealRow[]>([]);
   const [loading, setLoading] = useState(true);
   const companyId = sessionUser?.companyId ?? "";
@@ -51,6 +54,12 @@ export default function OngoingDealsPage() {
       }
     })();
   }, [companyId, platformWide]);
+
+  useEffect(() => {
+    if (!companyId || loading || !deals.length) return;
+    markOngoingDealsViewed(companyId, deals.map((d) => d.id));
+    void refreshNotifications();
+  }, [companyId, loading, deals, refreshNotifications]);
 
   const reloadDeals = useCallback(async () => {
     if (!isSupabaseConfigured || !companyId) return;

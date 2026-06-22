@@ -53,13 +53,17 @@ export async function fetchUnreadMessageCount(): Promise<number> {
   const companyId = getActiveCompanyId();
   const { data: convos, error } = await supabase
     .from("conversations")
-    .select("id, buyer_last_read_at")
-    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
+    .select("id, buyer_company_id, seller_company_id, buyer_last_read_at, seller_last_read_at")
+    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
+    .in("channel_type", ["carrier_admin", "recruiter_admin"]);
   if (error || !convos?.length) return 0;
 
   let total = 0;
   for (const c of convos) {
-    const since = c.buyer_last_read_at ?? "1970-01-01T00:00:00Z";
+    const since =
+      c.buyer_company_id === companyId
+        ? c.buyer_last_read_at ?? "1970-01-01T00:00:00Z"
+        : c.seller_last_read_at ?? "1970-01-01T00:00:00Z";
     const { count } = await supabase
       .from("messages")
       .select("id", { count: "exact", head: true })
@@ -74,20 +78,31 @@ export async function fetchUnreadMessageCount(): Promise<number> {
 export async function markConversationRead(conversationId: string): Promise<void> {
   if (!supabase) return;
   const companyId = getActiveCompanyId();
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("buyer_company_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conv) return;
+  const field = conv.buyer_company_id === companyId ? "buyer_last_read_at" : "seller_last_read_at";
   await supabase
     .from("conversations")
-    .update({ buyer_last_read_at: new Date().toISOString() })
-    .eq("id", conversationId)
-    .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
+    .update({ [field]: new Date().toISOString() })
+    .eq("id", conversationId);
 }
 
 export async function markAllConversationsRead(): Promise<void> {
   if (!supabase) return;
   const companyId = getActiveCompanyId();
-  await supabase
+  const now = new Date().toISOString();
+  const { data: convos } = await supabase
     .from("conversations")
-    .update({ buyer_last_read_at: new Date().toISOString() })
+    .select("id, buyer_company_id")
     .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`);
+  for (const c of convos ?? []) {
+    const field = c.buyer_company_id === companyId ? "buyer_last_read_at" : "seller_last_read_at";
+    await supabase.from("conversations").update({ [field]: now }).eq("id", c.id);
+  }
 }
 
 export async function fetchNotifications(): Promise<AppNotification[]> {
@@ -117,8 +132,9 @@ export async function fetchNotifications(): Promise<AppNotification[]> {
     supabase.from("follow_ups").select("*").eq("company_id", companyId),
     supabase
       .from("conversations")
-      .select("id, subject, last_message_at, buyer_last_read_at")
+      .select("id, subject, last_message_at, buyer_last_read_at, seller_last_read_at, buyer_company_id")
       .or(`buyer_company_id.eq.${companyId},seller_company_id.eq.${companyId}`)
+      .in("channel_type", ["carrier_admin", "recruiter_admin"])
   ]);
 
   for (const d of dealsRes.data ?? []) {
@@ -198,7 +214,10 @@ export async function fetchNotifications(): Promise<AppNotification[]> {
   }
 
   for (const c of convosRes.data ?? []) {
-    const since = c.buyer_last_read_at ?? "1970-01-01T00:00:00Z";
+    const since =
+      c.buyer_company_id === companyId
+        ? c.buyer_last_read_at ?? "1970-01-01T00:00:00Z"
+        : (c as { seller_last_read_at?: string | null }).seller_last_read_at ?? "1970-01-01T00:00:00Z";
     const { count } = await supabase
       .from("messages")
       .select("id", { count: "exact", head: true })

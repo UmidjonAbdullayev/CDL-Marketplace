@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { MessengerPanel } from "../components/chat/MessengerPanel";
+import { AdminAvatar } from "../components/ui/AdminAvatar";
 import { Pagination } from "../components/ui/Pagination";
 import { PageHeader } from "../lib/badges";
 import { useApp } from "../context/AppContext";
@@ -23,6 +25,7 @@ function formatMsgTime(iso: string) {
 }
 
 export default function MessagesPage() {
+  const navigate = useNavigate();
   const { sessionUser, showToast } = useApp();
   const {
     messagesPage: page,
@@ -160,35 +163,66 @@ export default function MessagesPage() {
   if (listLoading && conversations.length === 0) {
     return (
       <div className="page active">
-        <PageHeader title="Messages" desc="Chat with CDL Exchange platform admins about your active deals." />
+        <PageHeader title="Messages" desc="Admin chats for your active deals — one thread per deal." />
         <p className="t-secondary">Loading conversations...</p>
       </div>
     );
   }
 
-  const chatTitle = activeConv
-    ? activeConv.is_support
-      ? "CDL Exchange Support"
-      : (activeConv.subject || (activeConv.companies?.name ?? "Conversation"))
-    : "";
+  const adminName = activeConv?.admin_name ?? "Platform Admin";
+  const adminInitials = adminName.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase() || "PA";
 
   return (
     <div className="page active messages-page">
-      <PageHeader title="Messages" desc="Chat with CDL Exchange platform admins about your active deals." />
+      <PageHeader title="Messages" desc="Admin chats for your active deals — one thread per deal." />
       {listRefreshing ? <div className="t-caption t-secondary messages-page-status">Updating...</div> : null}
       <div className="messages-layout">
         <div className="messages-sidebar">
           <div className="conv-list" id="convList">
-            {conversations.map((c) => (
-              <div key={c.id} className={`conv-item ${active === c.id ? "active" : ""}`} onClick={() => setActive(c.id)}>
-                <div className="name">
-                  {c.is_support ? "CDL Exchange Support" : (c.companies?.name ?? c.subject)}
-                  {c.deal_id ? <span className="badge badge-blue" style={{ fontSize: 9 }}>Deal {c.deal_id}</span> : null}
-                </div>
-                <div className="preview">{c.subject}</div>
-                <div className="time">{formatMsgTime(c.last_message_at)}</div>
-              </div>
-            ))}
+            {conversations.length === 0 ? (
+              <p className="t-secondary conv-list-empty">No admin chats yet. Chats open when you start a hiring process.</p>
+            ) : (
+              conversations.map((c) => {
+                const label = c.deal_id
+                  ? `Deal ${c.deal_id}${c.driver_label ? ` · ${c.driver_label}` : ""}`
+                  : c.subject || "Admin chat";
+                const convAdminName = c.admin_name ?? "Platform Admin";
+                const convInitials = convAdminName.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase() || "PA";
+                return (
+                  <div
+                    key={c.id}
+                    className={`conv-item ${active === c.id ? "active" : ""}`}
+                    onClick={() => setActive(c.id)}
+                  >
+                    <div className="conv-item-head">
+                      <AdminAvatar
+                        name={convAdminName}
+                        initials={convInitials}
+                        avatarUrl={c.admin_avatar_url}
+                        size="sm"
+                      />
+                      <div className="name">{label}</div>
+                    </div>
+                    <div className="preview">
+                      {c.admin_name ? `Admin: ${c.admin_name}` : "Platform admin chat"}
+                    </div>
+                    <div className="time">{formatMsgTime(c.last_message_at)}</div>
+                    {c.deal_id ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm conv-open-deal"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/deals/${c.deal_id}`);
+                        }}
+                      >
+                        Open deal
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
           </div>
           <Pagination
             page={page}
@@ -201,23 +235,40 @@ export default function MessagesPage() {
         </div>
         <div className="messages-chat-column">
           {activeConv ? (
-            <MessengerPanel
-              className="messenger-panel--embedded messenger-panel--docked"
-              title={chatTitle}
-              live
-              messages={bubbles}
-              loading={messagesLoading}
-              emptyMessage="No messages yet. Start the conversation."
-              value={input}
-              onChange={setInput}
-              onSend={() => void send()}
-              sending={sending}
-              onFileSelect={(file) => void shareFile(file)}
-              focusKey={conversationId ?? undefined}
-              messagesEndRef={messagesEndRef}
-            />
+            <>
+              <div className="messages-chat-admin-bar">
+                <AdminAvatar
+                  name={adminName}
+                  initials={adminInitials}
+                  avatarUrl={activeConv.admin_avatar_url}
+                  size="md"
+                />
+                <div>
+                  <strong>{adminName}</strong>
+                  <p className="t-caption t-secondary">
+                    {activeConv.deal_id ? `Deal ${activeConv.deal_id} admin chat` : "Platform admin chat"}
+                  </p>
+                </div>
+              </div>
+              <MessengerPanel
+                className="messenger-panel--embedded messenger-panel--docked"
+                title={adminName}
+                hideHeader
+                live
+                messages={bubbles}
+                loading={messagesLoading}
+                emptyMessage="No messages yet. Message your assigned admin about this deal."
+                value={input}
+                onChange={setInput}
+                onSend={() => void send()}
+                sending={sending}
+                onFileSelect={(file) => void shareFile(file)}
+                focusKey={conversationId ?? undefined}
+                messagesEndRef={messagesEndRef}
+              />
+            </>
           ) : (
-            <div className="messages-empty t-secondary">No admin conversations yet. Chats open when you start a hiring process.</div>
+            <div className="messages-empty t-secondary">Select a deal chat from the left to message your admin.</div>
           )}
         </div>
       </div>

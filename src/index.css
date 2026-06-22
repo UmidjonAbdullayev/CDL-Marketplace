@@ -1375,13 +1375,93 @@ tbody tr:hover td { background: var(--bg); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .deal-party-chat-head h3 {
-  font-size: 14px;
+  font-size: 13px;
   margin: 0;
+  font-weight: 600;
+}
+.deal-admin-presence {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.deal-admin-presence-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.deal-admin-presence-text strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.admin-avatar {
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--gray-100);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.admin-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.admin-avatar--sm { width: 32px; height: 32px; font-size: 11px; }
+.admin-avatar--md { width: 40px; height: 40px; font-size: 12px; }
+.admin-avatar--lg { width: 72px; height: 72px; font-size: 18px; }
+.avatar-upload {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.avatar-upload-btn {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.avatar-upload-btn:hover { border-color: var(--primary); color: var(--primary); }
+.messages-chat-admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+.conv-item-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conv-item-head .name { flex: 1; min-width: 0; }
+.conv-list-empty { padding: 16px; font-size: 13px; }
+.conv-open-deal { margin-top: 8px; }
+.admin-team-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .deal-admin-online {
   display: flex;

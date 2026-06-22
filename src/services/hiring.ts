@@ -2,6 +2,7 @@ import { getActiveCompanyId } from "../lib/activeCompany";
 import type { HiringStage } from "../lib/hiring";
 import { supabase } from "../lib/supabase";
 import { enrichMessagesWithAttachmentUrls, getAttachmentViewUrl, uploadChatAttachment } from "./chatAttachments";
+import { fetchAdminProfile } from "./adminProfiles";
 import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation } from "./marketplace";
 import { assertCanStartHiring, resolveHireLimit } from "./platformLimits";
 import type { Driver, DriverCard } from "../types";
@@ -74,6 +75,12 @@ export type DealWorkspace = {
   recruiterConversationId: string | null;
   listPrice: number | null;
   carrierPrice: number;
+  assignedAdmin: {
+    id: string;
+    name: string;
+    initials: string;
+    avatarUrl: string | null;
+  } | null;
 };
 
 function dealId(): string {
@@ -503,6 +510,17 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
     download_url: doc.storage_path ? getAttachmentViewUrl(doc.storage_path) : null
   }));
 
+  const assignedAdminId = (listing as { assigned_admin_id?: string | null } | null)?.assigned_admin_id ?? null;
+  const assignedAdminProfile = assignedAdminId ? await fetchAdminProfile(assignedAdminId) : null;
+  const assignedAdmin = assignedAdminProfile
+    ? {
+        id: assignedAdminProfile.id,
+        name: assignedAdminProfile.name,
+        initials: assignedAdminProfile.initials,
+        avatarUrl: assignedAdminProfile.avatarUrl
+      }
+    : null;
+
   return {
     deal: {
       ...deal,
@@ -530,7 +548,8 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
     carrierConversationId,
     recruiterConversationId,
     listPrice: listing?.price ?? null,
-    carrierPrice: deal.amount
+    carrierPrice: deal.amount,
+    assignedAdmin
   };
 }
 
