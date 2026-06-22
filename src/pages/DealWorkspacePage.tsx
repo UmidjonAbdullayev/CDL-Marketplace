@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlatformRealtime } from "../hooks/usePlatformRealtime";
 import {
   AlertTriangle,
-  Bell,
   CheckCircle2,
   Clock,
   FileText,
@@ -363,17 +362,14 @@ export default function DealWorkspacePage() {
 
   return (
     <div className="page active deal-workspace-page deal-workspace-page--party">
-      <header className="deal-party-header">
+      <header className="deal-party-header deal-party-header--compact">
         <div className="deal-party-header-left">
           <h2>Deal {deal.id}</h2>
           <span className={`badge ${statusBadgeClass(deal.status)}`}>{displayStatus(deal.status)}</span>
         </div>
         <div className="deal-party-header-actions">
           <button type="button" className="btn btn-danger btn-sm deal-dispute-btn" onClick={() => openDisputeModal(deal.id)}>
-            <AlertTriangle className="icon-sm" /> Open Dispute
-          </button>
-          <button type="button" className="deal-party-bell" aria-label="Notifications">
-            <Bell className="icon-sm" />
+            <AlertTriangle className="icon-sm" /> Dispute
           </button>
         </div>
       </header>
@@ -659,27 +655,13 @@ export default function DealWorkspacePage() {
           </div>
         </div>
 
-        <aside className="deal-party-rail scroll-y">
+        <aside className="deal-party-rail">
           <div className="card deal-party-chat-card">
             <div className="deal-party-chat-head">
               <h3>Chat with Admin</h3>
               <span className="deal-admin-online"><span className="deal-online-dot" /> Platform team</span>
             </div>
             {chatPanel}
-          </div>
-
-          <div className="card deal-party-summary">
-            <div className="card-header"><h3>Deal Summary</h3></div>
-            <div className="card-body">
-              <dl className="deal-summary-list">
-                <div><dt>Deal ID</dt><dd>{deal.id}</dd></div>
-                <div><dt>Driver</dt><dd>{fullName(driver)}</dd></div>
-                <div><dt>{recruitmentFee.label}</dt><dd>{recruitmentFee.value}</dd></div>
-                <div><dt>Status</dt><dd><span className={`badge ${statusBadgeClass(deal.status)}`}>{displayStatus(deal.status)}</span></dd></div>
-                <div><dt>Stage</dt><dd>{HIRING_STAGES[currentStageIdx]?.label ?? deal.hiring_stage}</dd></div>
-                <div><dt>Created</dt><dd>{fmtDate(deal.created_at)}</dd></div>
-              </dl>
-            </div>
           </div>
         </aside>
       </div>

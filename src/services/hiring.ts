@@ -376,6 +376,22 @@ export async function signSellerContract(dealIdValue: string, signerName: string
   return recruiterConvId ?? carrierConvId ?? "";
 }
 
+async function findDealChannelConversation(
+  dealIdValue: string,
+  channelType: "carrier_admin" | "recruiter_admin"
+): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("deal_id", dealIdValue)
+    .eq("channel_type", channelType)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error) throw error;
+  return data?.[0]?.id ?? null;
+}
+
 async function ensureCarrierAdminConversation(
   dealIdValue: string,
   sellerCompanyId: string,
@@ -383,13 +399,8 @@ async function ensureCarrierAdminConversation(
 ): Promise<string | null> {
   if (!supabase) return null;
 
-  const { data: existing } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("deal_id", dealIdValue)
-    .eq("channel_type", "carrier_admin")
-    .maybeSingle();
-  if (existing?.id) return existing.id;
+  const existingId = await findDealChannelConversation(dealIdValue, "carrier_admin");
+  if (existingId) return existingId;
 
   let buyerId = buyerCompanyId;
   if (!buyerId) {
@@ -421,13 +432,8 @@ async function ensureRecruiterAdminConversation(
 ): Promise<string | null> {
   if (!supabase) return null;
 
-  const { data: existing } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("deal_id", dealIdValue)
-    .eq("channel_type", "recruiter_admin")
-    .maybeSingle();
-  if (existing?.id) return existing.id;
+  const existingId = await findDealChannelConversation(dealIdValue, "recruiter_admin");
+  if (existingId) return existingId;
 
   const { data: created, error } = await supabase
     .from("conversations")
@@ -459,13 +465,14 @@ export async function fetchDealWorkspace(dealIdValue: string): Promise<DealWorks
       : Promise.resolve({ data: null }),
     supabase.from("deal_events").select("*").eq("deal_id", dealIdValue).order("created_at", { ascending: true }),
     supabase.from("deal_documents").select("*").eq("deal_id", dealIdValue).order("created_at", { ascending: false }),
-    supabase.from("conversations").select("id, channel_type").eq("deal_id", dealIdValue)
+    supabase.from("conversations").select("id, channel_type, created_at").eq("deal_id", dealIdValue).order("created_at", { ascending: true })
   ]);
 
-  let carrierConversationId =
-    convRows?.find((c) => c.channel_type === "carrier_admin")?.id ?? null;
-  let recruiterConversationId =
-    convRows?.find((c) => c.channel_type === "recruiter_admin")?.id ?? null;
+  const pickChannelId = (channelType: string) =>
+    convRows?.find((c) => c.channel_type === channelType)?.id ?? null;
+
+  let carrierConversationId = pickChannelId("carrier_admin");
+  let recruiterConversationId = pickChannelId("recruiter_admin");
 
   if (deal.buyer_signed_at) {
     carrierConversationId = await ensureCarrierAdminConversation(
@@ -742,17 +749,17 @@ export function subscribeDealWorkspace(
 export async function sendDealMessage(
   conversationId: string,
   body: string,
-  companyId: string,
-  buyerCompanyId: string,
+  senderCompanyId: string,
+  channelPartyCompanyId: string,
   attachment?: { name: string; path: string }
 ): Promise<DealMessageRow | null> {
   if (!supabase) return null;
-  const direction = companyId === buyerCompanyId ? "out" : "in";
+  const direction = senderCompanyId === channelPartyCompanyId ? "out" : "in";
   const { data, error } = await supabase
     .from("messages")
     .insert({
       conversation_id: conversationId,
-      sender_company_id: companyId,
+      sender_company_id: senderCompanyId,
       direction,
       body,
       attachment_name: attachment?.name ?? null,

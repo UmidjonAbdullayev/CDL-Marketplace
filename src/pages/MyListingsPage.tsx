@@ -1,17 +1,22 @@
+import { useState } from "react";
 import { Pagination } from "../components/ui/Pagination";
 import { PageHeader } from "../lib/badges";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
+import { DRIVER_TYPES } from "../lib/driver-types";
+import { US_STATES } from "../lib/us-states";
 import {
   DEFAULT_PAGE_SIZE,
   expireListing,
-  updateListingPrice,
+  fetchSellerListingDetail,
+  updateListing,
   updateListingStatus,
   type SellerListingRow
 } from "../services/marketplace";
 import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { fmtPrice } from "../lib/format";
 import { invalidateDataViews } from "../lib/dataInvalidation";
+import type { ScoreFlag } from "../types";
 
 function maskDriver(first: string, last: string) {
   return `${first} ${last.charAt(0)}.`;
@@ -47,34 +52,143 @@ export default function MyListingsPage() {
     refreshMyListings
   } = useExchangeData();
 
-  const editPrice = (row: SellerListingRow) => {
-    const cap = maxRecruiterPrice(row.driver_type ?? "Owner Operator");
-    let nextPrice = row.price;
-    openModal(
-      "Edit Listing Price",
-      <div className="form-group">
-        <label>New price (max {fmtPrice(cap)})</label>
-        <input type="number" min={50} max={cap} defaultValue={row.price} onChange={(e) => { nextPrice = Number(e.target.value || row.price); }} />
-      </div>,
-      <>
-        <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
-        <button className="btn btn-primary" onClick={() => {
-          const err = validateRecruiterListPrice(nextPrice, row.driver_type ?? "Owner Operator");
-          if (err) {
-            showToast(err, "error");
-            return;
-          }
-          void updateListingPrice(row.id, nextPrice)
-            .then(() => {
-              closeModal();
-              showToast("Price updated — pending admin re-approval", "success");
-              invalidateDataViews(["my-listings", "marketplace", "dashboard", "admin"]);
-              refreshMyListings(true);
-            })
-            .catch((e) => showToast(e instanceof Error ? e.message : "Failed to update price", "error"));
-        }}>Save</button>
-      </>
-    );
+  const [editLoading, setEditLoading] = useState(false);
+
+  const editListing = (row: SellerListingRow) => {
+    setEditLoading(true);
+    void fetchSellerListingDetail(row.id)
+      .then((detail) => {
+        if (!detail) {
+          showToast("Listing not found", "error");
+          return;
+        }
+        const cap = maxRecruiterPrice(detail.driver_type ?? "Owner Operator");
+        let form = {
+          firstName: detail.first_name,
+          lastName: detail.last_name,
+          state: detail.state,
+          phone: detail.phone,
+          email: detail.email ?? "",
+          cdlClass: detail.cdl_class,
+          cdlNumber: detail.cdl_number ?? "",
+          yearsExp: detail.years_exp,
+          scoreFlag: (detail.score_flag ?? "green") as ScoreFlag,
+          endorsements: (detail.endorsements ?? []).join(", "),
+          availDate: detail.available_date?.slice(0, 10) ?? "",
+          equipment: detail.equipment,
+          routePref: detail.route_pref,
+          driverType: detail.driver_type,
+          notes: detail.notes ?? "",
+          price: detail.price,
+          listingDurationDays: Math.min(7, Math.max(1, detail.listing_duration_days ?? 7))
+        };
+
+        openModal(
+          "Edit Listing",
+          <div className="listing-edit-form scroll-y" style={{ maxHeight: "60vh" }}>
+            <div className="form-row">
+              <div className="form-group"><label>First Name *</label><input defaultValue={form.firstName} onChange={(e) => { form.firstName = e.target.value; }} /></div>
+              <div className="form-group"><label>Last Name *</label><input defaultValue={form.lastName} onChange={(e) => { form.lastName = e.target.value; }} /></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>State *</label>
+                <select defaultValue={form.state} onChange={(e) => { form.state = e.target.value; }}>
+                  <option value="">Select state</option>
+                  {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code}</option>)}
+                </select>
+              </div>
+              <div className="form-group"><label>Phone *</label><input defaultValue={form.phone} onChange={(e) => { form.phone = e.target.value; }} /></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>CDL Class *</label>
+                <select defaultValue={form.cdlClass} onChange={(e) => { form.cdlClass = e.target.value; }}>
+                  <option>Class A</option><option>Class B</option><option>Class C</option>
+                </select>
+              </div>
+              <div className="form-group"><label>Years Experience *</label>
+                <input type="number" min={0} defaultValue={form.yearsExp} onChange={(e) => { form.yearsExp = Number(e.target.value) || 0; }} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>Available Date *</label>
+                <input type="date" defaultValue={form.availDate} onChange={(e) => { form.availDate = e.target.value; }} />
+              </div>
+              <div className="form-group"><label>Equipment *</label>
+                <select defaultValue={form.equipment} onChange={(e) => { form.equipment = e.target.value; }}>
+                  <option>Dry Van</option><option>Reefer</option><option>Flatbed</option><option>Tanker</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>Route Preference *</label>
+                <select defaultValue={form.routePref} onChange={(e) => { form.routePref = e.target.value; }}>
+                  <option>OTR</option><option>Regional</option><option>Local</option><option>Dedicated</option>
+                </select>
+              </div>
+              <div className="form-group"><label>Driver Type *</label>
+                <select defaultValue={form.driverType} onChange={(e) => { form.driverType = e.target.value; }}>
+                  {DRIVER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>Listing Price *</label>
+                <input type="number" min={50} max={cap} defaultValue={form.price} onChange={(e) => { form.price = Number(e.target.value) || form.price; }} />
+                <span className="t-caption t-secondary">Max {fmtPrice(cap)}</span>
+              </div>
+              <div className="form-group"><label>Duration (days) *</label>
+                <select defaultValue={form.listingDurationDays} onChange={(e) => { form.listingDurationDays = Number(e.target.value); }}>
+                  {[1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d} day{d === 1 ? "" : "s"}</option>)}
+                </select>
+              </div>
+            </div>
+            <p className="t-caption t-secondary">Changes require admin re-approval before the listing goes live again.</p>
+          </div>,
+          <>
+            <button className="btn btn-secondary" type="button" onClick={closeModal}>Cancel</button>
+            <button className="btn btn-primary" type="button" onClick={() => {
+              if (!form.firstName.trim() || !form.lastName.trim() || !form.state || !form.phone.trim() || !form.availDate) {
+                showToast("Complete all required fields", "error");
+                return;
+              }
+              const err = validateRecruiterListPrice(form.price, form.driverType);
+              if (err) {
+                showToast(err, "error");
+                return;
+              }
+              void updateListing(row.id, {
+                firstName: form.firstName.trim(),
+                lastName: form.lastName.trim(),
+                state: form.state,
+                phone: form.phone.trim(),
+                email: form.email.trim() || undefined,
+                cdlClass: form.cdlClass,
+                cdlNumber: form.cdlNumber.trim() || undefined,
+                yearsExp: form.yearsExp,
+                scoreFlag: form.scoreFlag,
+                endorsements: form.endorsements.split(",").map((e) => e.trim()).filter(Boolean),
+                availableDate: form.availDate,
+                equipment: form.equipment,
+                routePref: form.routePref,
+                notes: form.notes.trim(),
+                price: form.price,
+                driverType: form.driverType,
+                listingDurationDays: form.listingDurationDays,
+                documents: detail.documents ?? undefined
+              })
+                .then(() => {
+                  closeModal();
+                  showToast("Listing updated — pending admin re-approval", "success");
+                  invalidateDataViews(["my-listings", "marketplace", "dashboard", "admin"]);
+                  refreshMyListings(true);
+                })
+                .catch((e) => showToast(e instanceof Error ? e.message : "Failed to update listing", "error"));
+            }}>Save Changes</button>
+          </>
+        );
+      })
+      .catch(() => showToast("Failed to load listing", "error"))
+      .finally(() => setEditLoading(false));
   };
 
   const togglePause = (row: SellerListingRow) => {
@@ -106,7 +220,7 @@ export default function MyListingsPage() {
     if (tab === "sold" || tab === "expired" || row.status === "hiring") return null;
     return (
       <>
-        <button className="btn btn-ghost btn-sm" type="button" onClick={() => editPrice(row)}>Edit Price</button>
+        <button className="btn btn-ghost btn-sm" type="button" disabled={editLoading} onClick={() => editListing(row)}>Edit Listing</button>
         {row.status !== "pending" && row.status !== "sold" ? (
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => togglePause(row)}>
             {row.status === "paused" ? "Resume" : "Pause"}

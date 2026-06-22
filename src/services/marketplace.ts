@@ -897,9 +897,9 @@ export type NewListingInput = {
   lastName: string;
   state: string;
   phone: string;
-  email: string;
+  email?: string;
   cdlClass: string;
-  cdlNumber: string;
+  cdlNumber?: string;
   yearsExp: number;
   scoreFlag: ScoreFlag;
   endorsements: string[];
@@ -909,26 +909,86 @@ export type NewListingInput = {
   notes: string;
   price: number;
   driverType: string;
+  listingDurationDays?: number;
   documents?: string[];
 };
 
-export async function createListing(input: NewListingInput): Promise<number> {
-  if (!supabase) throw new Error("Supabase not configured");
+export type SellerListingDetail = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  state: string;
+  phone: string;
+  email: string | null;
+  cdl_class: string;
+  cdl_number: string | null;
+  years_exp: number;
+  score_flag: ScoreFlag;
+  endorsements: string[] | null;
+  available_date: string;
+  equipment: string;
+  route_pref: string;
+  notes: string | null;
+  price: number;
+  driver_type: string;
+  listing_duration_days: number | null;
+  documents: string[] | null;
+  status: string;
+};
+
+export type UpdateListingInput = {
+  firstName: string;
+  lastName: string;
+  state: string;
+  phone: string;
+  email?: string;
+  cdlClass: string;
+  cdlNumber?: string;
+  yearsExp: number;
+  scoreFlag: ScoreFlag;
+  endorsements: string[];
+  availableDate: string;
+  equipment: string;
+  routePref: string;
+  notes: string;
+  price: number;
+  driverType: string;
+  listingDurationDays?: number;
+  documents?: string[];
+};
+
+export async function fetchSellerListingDetail(listingId: number): Promise<SellerListingDetail | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("driver_listings")
+    .select(
+      "id, first_name, last_name, state, phone, email, cdl_class, cdl_number, years_exp, score_flag, endorsements, available_date, equipment, route_pref, notes, price, driver_type, listing_duration_days, documents, status"
+    )
+    .eq("id", listingId)
+    .eq("seller_company_id", getActiveCompanyId())
+    .maybeSingle();
+  if (error) throw error;
+  return data as SellerListingDetail | null;
+}
+
+export async function updateListing(listingId: number, input: UpdateListingInput): Promise<void> {
+  if (!supabase) return;
   const capError = validateRecruiterListPrice(input.price, input.driverType);
   if (capError) throw new Error(capError);
 
-  await assertCanCreateListing();
-
+  const durationDays = Math.min(7, Math.max(1, input.listingDurationDays ?? 7));
   const pricing = computeListingPricing(input.price, 0);
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + durationDays);
 
-  const { data, error } = await supabase.from("driver_listings").insert({
+  const { error } = await supabase.from("driver_listings").update({
     first_name: input.firstName,
     last_name: input.lastName,
     state: input.state,
     phone: input.phone,
-    email: input.email,
+    email: input.email ?? null,
     cdl_class: input.cdlClass,
-    cdl_number: input.cdlNumber,
+    cdl_number: input.cdlNumber ?? null,
     years_exp: input.yearsExp,
     score_flag: input.scoreFlag,
     endorsements: input.endorsements,
@@ -942,7 +1002,52 @@ export async function createListing(input: NewListingInput): Promise<number> {
     carrier_price: null,
     admin_markup: 0,
     driver_type: input.driverType,
-    documents: input.documents ?? ["CDL Copy"],
+    listing_duration_days: durationDays,
+    expires_at: expiresAt.toISOString(),
+    documents: input.documents?.length ? input.documents : ["CDL Copy"],
+    status: "pending",
+    updated_at: new Date().toISOString()
+  }).eq("id", listingId).eq("seller_company_id", getActiveCompanyId());
+  if (error) throw error;
+  await autoAssignListing(listingId);
+}
+
+export async function createListing(input: NewListingInput): Promise<number> {
+  if (!supabase) throw new Error("Supabase not configured");
+  const capError = validateRecruiterListPrice(input.price, input.driverType);
+  if (capError) throw new Error(capError);
+
+  await assertCanCreateListing();
+
+  const pricing = computeListingPricing(input.price, 0);
+  const durationDays = Math.min(7, Math.max(1, input.listingDurationDays ?? 7));
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + durationDays);
+
+  const { data, error } = await supabase.from("driver_listings").insert({
+    first_name: input.firstName,
+    last_name: input.lastName,
+    state: input.state,
+    phone: input.phone,
+    email: input.email ?? null,
+    cdl_class: input.cdlClass,
+    cdl_number: input.cdlNumber ?? null,
+    years_exp: input.yearsExp,
+    score_flag: input.scoreFlag,
+    endorsements: input.endorsements,
+    available_date: input.availableDate,
+    equipment: input.equipment,
+    route_pref: input.routePref,
+    notes: input.notes,
+    price: pricing.listPrice,
+    platform_fee: pricing.platformFee,
+    net_payout: pricing.netPayout,
+    carrier_price: null,
+    admin_markup: 0,
+    driver_type: input.driverType,
+    listing_duration_days: durationDays,
+    expires_at: expiresAt.toISOString(),
+    documents: input.documents?.length ? input.documents : ["CDL Copy"],
     seller_company_id: getActiveCompanyId(),
     status: "pending",
     verified: false,

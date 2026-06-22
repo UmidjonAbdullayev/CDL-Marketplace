@@ -15,6 +15,57 @@ import type { ScoreFlag } from "../types";
 
 const steps = ["Basic Info", "Qualifications", "Availability", "Documents", "Consent", "Pricing", "Review"];
 
+function stepErrors(
+  stepNum: number,
+  fields: {
+    first: string;
+    last: string;
+    state: string;
+    phone: string;
+    cdlClass: string;
+    yearsExp: number | "";
+    availDate: string;
+    equipment: string;
+    routePref: string;
+    driverType: string;
+    documents: string[];
+    consent: boolean;
+    price: number | "";
+  }
+): string[] {
+  const errs: string[] = [];
+  if (stepNum === 1) {
+    if (!fields.first.trim()) errs.push("First name is required");
+    if (!fields.last.trim()) errs.push("Last name is required");
+    if (!fields.state) errs.push("State is required");
+    if (!fields.phone.trim()) errs.push("Phone number is required");
+  }
+  if (stepNum === 2) {
+    if (!fields.cdlClass) errs.push("CDL class is required");
+    if (fields.yearsExp === "") errs.push("Years of experience is required");
+  }
+  if (stepNum === 3) {
+    if (!fields.availDate) errs.push("Availability date is required");
+    if (!fields.equipment) errs.push("Equipment preference is required");
+    if (!fields.routePref) errs.push("Route preference is required");
+    if (!fields.driverType) errs.push("Driver type is required");
+  }
+  if (stepNum === 4) {
+    if (!fields.documents.length) errs.push("Upload at least one document");
+  }
+  if (stepNum === 5) {
+    if (!fields.consent) errs.push("Driver consent confirmation is required");
+  }
+  if (stepNum === 6) {
+    if (fields.price === "") errs.push("Listing price is required");
+  }
+  return errs;
+}
+
+function stepComplete(stepNum: number, fields: Parameters<typeof stepErrors>[1]): boolean {
+  return stepErrors(stepNum, fields).length === 0;
+}
+
 export default function SellPage() {
   const navigate = useNavigate();
   const { showToast } = useApp();
@@ -37,11 +88,31 @@ export default function SellPage() {
   const [driverType, setDriverType] = useState("Owner Operator");
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState<number | "">("");
+  const [listingDurationDays, setListingDurationDays] = useState(7);
   const [documents, setDocuments] = useState<string[]>([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const docInputRef = useRef<HTMLInputElement>(null);
   const priceCap = useMemo(() => maxRecruiterPrice(driverType), [driverType]);
   const [limitNote, setLimitNote] = useState("");
+
+  const fieldSnapshot = useMemo(
+    () => ({
+      first,
+      last,
+      state,
+      phone,
+      cdlClass,
+      yearsExp,
+      availDate,
+      equipment,
+      routePref,
+      driverType,
+      documents,
+      consent,
+      price
+    }),
+    [first, last, state, phone, cdlClass, yearsExp, availDate, equipment, routePref, driverType, documents, consent, price]
+  );
 
   useEffect(() => {
     void resolveListingLimit().then((snap) => setLimitNote(limitHint(snap))).catch(() => {});
@@ -60,14 +131,57 @@ export default function SellPage() {
     }
   };
 
+  const validateCurrentStep = (): boolean => {
+    const errs = stepErrors(step, fieldSnapshot);
+    if (errs.length) {
+      showToast(errs[0], "error");
+      return false;
+    }
+    if (step === 6 && price !== "") {
+      const capError = validateRecruiterListPrice(Number(price), driverType);
+      if (capError) {
+        showToast(capError, "error");
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const goToStep = (target: number) => {
+    if (target === step) return;
+    if (target < step) {
+      setStep(target);
+      return;
+    }
+    for (let s = step; s < target; s += 1) {
+      const errs = stepErrors(s, fieldSnapshot);
+      if (errs.length) {
+        showToast(`Complete step ${s} first: ${errs[0]}`, "error");
+        setStep(s);
+        return;
+      }
+    }
+    setStep(target);
+  };
+
   const publish = async () => {
-    if (!first.trim() || !last.trim() || !state || !phone.trim() || !email.trim() || !cdlNumber.trim() || yearsExp === "" || !availDate || price === "") {
-      showToast("Complete all required fields before publishing", "error");
+    for (let s = 1; s <= 6; s += 1) {
+      const errs = stepErrors(s, fieldSnapshot);
+      if (errs.length) {
+        showToast(errs[0], "error");
+        setStep(s);
+        return;
+      }
+    }
+    if (price === "") {
+      showToast("Listing price is required", "error");
+      setStep(6);
       return;
     }
     const capError = validateRecruiterListPrice(Number(price), driverType);
     if (capError) {
       showToast(capError, "error");
+      setStep(6);
       return;
     }
     setSubmitting(true);
@@ -77,9 +191,9 @@ export default function SellPage() {
         lastName: last.trim(),
         state,
         phone: phone.trim(),
-        email: email.trim(),
+        email: email.trim() || undefined,
         cdlClass,
-        cdlNumber: cdlNumber.trim(),
+        cdlNumber: cdlNumber.trim() || undefined,
         yearsExp: Number(yearsExp),
         scoreFlag,
         endorsements: endorsements.split(",").map((e) => e.trim()).filter(Boolean),
@@ -89,7 +203,8 @@ export default function SellPage() {
         notes: notes.trim(),
         price: Number(price),
         driverType,
-        documents: documents.length ? documents : undefined
+        listingDurationDays,
+        documents
       });
       invalidateDataViews(["my-listings", "admin", "dashboard", "marketplace"]);
       showToast("Listing published successfully!", "success");
@@ -106,10 +221,7 @@ export default function SellPage() {
   };
 
   const next = () => {
-    if (step === 5 && !consent) {
-      showToast("Consent confirmation is required", "error");
-      return;
-    }
+    if (!validateCurrentStep()) return;
     if (step < 7) {
       setStep((s) => s + 1);
     } else {
@@ -125,35 +237,50 @@ export default function SellPage() {
       ) : null}
       <div className="card"><div className="card-body">
         <div className="form-steps" id="formSteps">
-          {steps.map((s, i) => <div key={s} className={`step-indicator ${i + 1 === step ? "active" : ""} ${i + 1 < step ? "done" : ""}`}>{i + 1}. {s}</div>)}
+          {steps.map((s, i) => {
+            const n = i + 1;
+            const complete = n < step || (n !== step && stepComplete(n, fieldSnapshot));
+            const invalid = n < step && !stepComplete(n, fieldSnapshot);
+            return (
+              <button
+                key={s}
+                type="button"
+                className={`step-indicator ${n === step ? "active" : ""} ${complete ? "done" : ""} ${invalid ? "invalid" : ""}`}
+                onClick={() => goToStep(n)}
+                aria-current={n === step ? "step" : undefined}
+              >
+                {n}. {s}
+              </button>
+            );
+          })}
         </div>
         <div className={`form-step ${step === 1 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 1: Driver Basic Info</h3>
           <div className="form-row">
-            <div className="form-group"><label>First Name *</label><input value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First name" /></div>
-            <div className="form-group"><label>Last Name *</label><input value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last name" /></div>
+            <div className="form-group"><label>First Name *</label><input value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First name" required /></div>
+            <div className="form-group"><label>Last Name *</label><input value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last name" required /></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label>State *</label>
-              <select value={state} onChange={(e) => setState(e.target.value)}>
+              <select value={state} onChange={(e) => setState(e.target.value)} required>
                 <option value="">Select state</option>
                 {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Phone *</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" /></div>
+            <div className="form-group"><label>Phone *</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" required /></div>
           </div>
-          <div className="form-group"><label>Email *</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" /></div>
+          <div className="form-group"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address (optional)" /></div>
         </div>
         <div className={`form-step ${step === 2 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 2: Qualification Details</h3>
           <div className="form-row">
             <div className="form-group"><label>CDL Class *</label>
-              <select value={cdlClass} onChange={(e) => setCdlClass(e.target.value)}><option>Class A</option><option>Class B</option><option>Class C</option></select>
+              <select value={cdlClass} onChange={(e) => setCdlClass(e.target.value)} required><option>Class A</option><option>Class B</option><option>Class C</option></select>
             </div>
-            <div className="form-group"><label>CDL Number *</label><input value={cdlNumber} onChange={(e) => setCdlNumber(e.target.value)} placeholder="CDL number" /></div>
+            <div className="form-group"><label>CDL Number</label><input value={cdlNumber} onChange={(e) => setCdlNumber(e.target.value)} placeholder="CDL number (optional)" /></div>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>Years Experience *</label><input type="number" min={0} value={yearsExp} onChange={(e) => setYearsExp(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Years" /></div>
+            <div className="form-group"><label>Years Experience *</label><input type="number" min={0} value={yearsExp} onChange={(e) => setYearsExp(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Years" required /></div>
             <div className="form-group"><label>CDL Score Status</label>
               <select value={scoreFlag} onChange={(e) => setScoreFlag(e.target.value as ScoreFlag)}>
                 <option value="green">Green — Clean Record</option>
@@ -167,23 +294,23 @@ export default function SellPage() {
         <div className={`form-step ${step === 3 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 3: Availability & Preferences</h3>
           <div className="form-row">
-            <div className="form-group"><label>Available Date *</label><input type="date" value={availDate} onChange={(e) => setAvailDate(e.target.value)} /></div>
+            <div className="form-group"><label>Available Date *</label><input type="date" value={availDate} onChange={(e) => setAvailDate(e.target.value)} required /></div>
             <div className="form-group"><label>Equipment Preference *</label>
-              <select value={equipment} onChange={(e) => setEquipment(e.target.value)}><option>Dry Van</option><option>Reefer</option><option>Flatbed</option><option>Tanker</option></select>
+              <select value={equipment} onChange={(e) => setEquipment(e.target.value)} required><option>Dry Van</option><option>Reefer</option><option>Flatbed</option><option>Tanker</option></select>
             </div>
           </div>
-          <div className="form-group"><label>Route Preference</label>
-            <select value={routePref} onChange={(e) => setRoutePref(e.target.value)}><option>OTR</option><option>Regional</option><option>Local</option><option>Dedicated</option></select>
+          <div className="form-group"><label>Route Preference *</label>
+            <select value={routePref} onChange={(e) => setRoutePref(e.target.value)} required><option>OTR</option><option>Regional</option><option>Local</option><option>Dedicated</option></select>
           </div>
           <div className="form-group"><label>Driver Type *</label>
-            <select value={driverType} onChange={(e) => setDriverType(e.target.value)}>
+            <select value={driverType} onChange={(e) => setDriverType(e.target.value)} required>
               {DRIVER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div className="form-group"><label>Additional Notes for Buyers</label><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Driver preferences, restrictions, special qualifications..." /></div>
         </div>
         <div className={`form-step ${step === 4 ? "active" : ""}`}>
-          <h3 style={{ marginBottom: 16 }}>Step 4: Upload Documents</h3>
+          <h3 style={{ marginBottom: 16 }}>Step 4: Upload Documents *</h3>
           <input
             ref={docInputRef}
             type="file"
@@ -212,7 +339,9 @@ export default function SellPage() {
                 <li key={name}><Paperclip className="icon-sm" /> {name}</li>
               ))}
             </ul>
-          ) : null}
+          ) : (
+            <p className="t-caption t-secondary" style={{ marginTop: 12 }}>At least one document is required before publishing.</p>
+          )}
         </div>
         <div className={`form-step ${step === 5 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 5: Consent Confirmation</h3>
@@ -234,11 +363,20 @@ export default function SellPage() {
                 min={50}
                 max={priceCap}
                 placeholder="Listing price"
+                required
                 onChange={(e) => setPrice(e.target.value === "" ? "" : Math.min(priceCap, Math.max(50, Number(e.target.value) || 50)))}
               />
               <span className="t-caption t-secondary">Max {fmtPrice(priceCap)} for {driverType}</span>
             </div>
-            <div className="form-group"><label>Listing Duration</label><select><option>30 days</option><option>60 days</option><option>90 days</option></select></div>
+            <div className="form-group">
+              <label>Listing Duration *</label>
+              <select value={listingDurationDays} onChange={(e) => setListingDurationDays(Number(e.target.value))} required>
+                {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                  <option key={d} value={d}>{d} day{d === 1 ? "" : "s"}</option>
+                ))}
+              </select>
+              <span className="t-caption t-secondary">Listings expire after up to 7 days</span>
+            </div>
           </div>
         </div>
         <div className={`form-step ${step === 7 ? "active" : ""}`}>
@@ -247,14 +385,15 @@ export default function SellPage() {
             <strong>Driver:</strong> {first || "—"} {last || ""}<br />
             <strong>Driver Type:</strong> {driverType}<br />
             <strong>Listing Price:</strong> {price !== "" ? fmtPrice(Number(price)) : "—"}<br />
+            <strong>Duration:</strong> {listingDurationDays} day{listingDurationDays === 1 ? "" : "s"}<br />
             <strong>Consent:</strong> {consent ? "Confirmed" : "Pending"}<br />
             <strong>Documents:</strong> {documents.length ? documents.join(", ") : "None uploaded"}<br />
             <strong>Status:</strong> Pending admin approval
           </div>
         </div>
         <div className="form-nav">
-          <button className="btn btn-secondary" style={{ visibility: step === 1 ? "hidden" : "visible" }} onClick={() => setStep((s) => Math.max(1, s - 1))}><ArrowLeft className="icon-sm" /> Previous</button>
-          <button className="btn btn-primary" onClick={next} disabled={submitting}>
+          <button className="btn btn-secondary" style={{ visibility: step === 1 ? "hidden" : "visible" }} type="button" onClick={() => setStep((s) => Math.max(1, s - 1))}><ArrowLeft className="icon-sm" /> Previous</button>
+          <button className="btn btn-primary" type="button" onClick={next} disabled={submitting}>
             {step === 7 ? (submitting ? "Publishing..." : "Publish Listing") : <>Next <ArrowRight className="icon-sm" /></>}
           </button>
         </div>

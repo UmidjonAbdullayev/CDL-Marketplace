@@ -1,6 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
 import {
-  AlertTriangle,
   Building2,
   CheckCircle,
   ChevronRight,
@@ -8,7 +7,6 @@ import {
   FileText,
   Handshake,
   LayoutDashboard,
-  MessageSquare,
   PlusCircle,
   Settings,
   ShieldCheck,
@@ -17,7 +15,6 @@ import {
   UserCog
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import { useExchangeData } from "../../context/ExchangeDataContext";
 import { canAccessAdminPanel, isSellerNav } from "../../lib/account-capabilities";
 import { fmtPrice } from "../../lib/format";
 
@@ -25,7 +22,6 @@ type NavItem = {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
-  badgeKey?: "disputes" | "messages";
   sellerOnly?: boolean;
   buyerOnly?: boolean;
   adminOnly?: boolean;
@@ -37,17 +33,15 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/marketplace", label: "Marketplace", icon: Store },
-      { to: "/sell", label: "Sell / List Driver", icon: PlusCircle },
-      { to: "/my-listings", label: "My Listings", icon: FileText },
-      { to: "/ongoing-deals", label: "Ongoing Deals", icon: CheckCircle }
+      { to: "/sell", label: "Sell / List Driver", icon: PlusCircle }
     ]
   },
   {
     label: "Transactions",
     items: [
-      { to: "/deals", label: "Deals / Escrow", icon: Handshake },
-      { to: "/disputes", label: "Disputes", icon: AlertTriangle, badgeKey: "disputes" },
-      { to: "/messages", label: "Messages", icon: MessageSquare, badgeKey: "messages" }
+      { to: "/my-listings", label: "My Listings", icon: FileText, sellerOnly: true },
+      { to: "/ongoing-deals", label: "Ongoing Deals", icon: CheckCircle },
+      { to: "/deals", label: "Deals / Escrow", icon: Handshake }
     ]
   },
   {
@@ -66,7 +60,6 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () => void }) {
   const location = useLocation();
   const { showToast, sessionUser, setSearchQuery } = useApp();
-  const { badges } = useExchangeData();
 
   const isSeller = isSellerNav(sessionUser);
 
@@ -102,7 +95,6 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () =
               {items.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.to);
-                const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
                 return (
                   <Link
                     key={item.to}
@@ -115,9 +107,6 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () =
                   >
                     <span className="icon"><Icon /></span>
                     {item.label}
-                    {badgeCount > 0 ? (
-                      <span className="nav-badge blue">{badgeCount}</span>
-                    ) : null}
                     <ChevronRight className="nav-chevron" />
                   </Link>
                 );
