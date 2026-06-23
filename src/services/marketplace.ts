@@ -1052,9 +1052,9 @@ export async function updateListing(listingId: number, input: UpdateListingInput
     last_name: input.lastName,
     state: input.state,
     phone: input.phone,
-    email: input.email ?? null,
+    email: input.email?.trim() || null,
     cdl_class: input.cdlClass,
-    cdl_number: input.cdlNumber ?? null,
+    cdl_number: input.cdlNumber?.trim() || null,
     years_exp: input.yearsExp,
     score_flag: input.scoreFlag,
     endorsements: input.endorsements,
@@ -1095,9 +1095,9 @@ export async function createListing(input: NewListingInput): Promise<number> {
     last_name: input.lastName,
     state: input.state,
     phone: input.phone,
-    email: input.email ?? null,
+    email: input.email?.trim() || null,
     cdl_class: input.cdlClass,
-    cdl_number: input.cdlNumber ?? null,
+    cdl_number: input.cdlNumber?.trim() || null,
     years_exp: input.yearsExp,
     score_flag: input.scoreFlag,
     endorsements: input.endorsements,
@@ -1119,7 +1119,7 @@ export async function createListing(input: NewListingInput): Promise<number> {
     verified: false,
     consent_verified: true
   }).select("id").single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   await autoAssignListing(data.id);
   await supabase.from("activities").insert({
     activity_type: "list",

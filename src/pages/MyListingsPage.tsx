@@ -14,6 +14,7 @@ import {
   type SellerListingRow
 } from "../services/marketplace";
 import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
+import { formatListingPublishError } from "../lib/listing-validation";
 import { fmtPrice } from "../lib/format";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import type { ScoreFlag } from "../types";
@@ -132,9 +133,22 @@ export default function MyListingsPage() {
               </div>
             </div>
             <div className="form-row">
-              <div className="form-group"><label>Listing Price *</label>
-                <input type="number" min={50} max={cap} defaultValue={form.price} onChange={(e) => { form.price = Number(e.target.value) || form.price; }} />
-                <span className="t-caption t-secondary">Max {fmtPrice(cap)}</span>
+              <div className="form-group"><label>Listing Price (USD) *</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={cap}
+                  step={1}
+                  defaultValue={form.price}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "") return;
+                    const n = Number(raw);
+                    if (Number.isFinite(n)) form.price = n;
+                  }}
+                />
+                <span className="t-caption t-secondary">Enter $50 up to {fmtPrice(cap)}</span>
               </div>
               <div className="form-group"><label>Duration (days) *</label>
                 <select defaultValue={form.listingDurationDays} onChange={(e) => { form.listingDurationDays = Number(e.target.value); }}>
@@ -182,7 +196,10 @@ export default function MyListingsPage() {
                   invalidateDataViews(["my-listings", "marketplace", "dashboard", "admin"]);
                   refreshMyListings(true);
                 })
-                .catch((e) => showToast(e instanceof Error ? e.message : "Failed to update listing", "error"));
+                .catch((e) => {
+                  const messages = formatListingPublishError(e);
+                  showToast(messages[0] ?? "Failed to update listing", "error");
+                });
             }}>Save Changes</button>
           </>
         );

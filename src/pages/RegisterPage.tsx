@@ -249,6 +249,13 @@ export default function RegisterPage() {
 
       <div className="register-main">
         <div className="register-card card">
+          <div className="register-mobile-brand">
+            <div className="brand-icon"><Truck /></div>
+            <div>
+              <strong>CDL Exchange</strong>
+              <p className="t-caption t-secondary">Driver recruiting marketplace</p>
+            </div>
+          </div>
           <div className="register-mode-tabs">
             <button
               type="button"

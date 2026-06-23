@@ -7,64 +7,19 @@ import { fmtPrice } from "../lib/format";
 import { DRIVER_TYPES } from "../lib/driver-types";
 import { US_STATES } from "../lib/us-states";
 import { invalidateDataViews } from "../lib/dataInvalidation";
-import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
+import { maxRecruiterPrice } from "../lib/listing-pricing";
+import {
+  collectListingIssues,
+  formatListingIssuesForToast,
+  formatListingPublishError,
+  LISTING_STEPS,
+  listingStepComplete,
+  listingStepErrors
+} from "../lib/listing-validation";
 import { createListing } from "../services/marketplace";
 import { PlatformLimitError, resolveListingLimit, limitHint } from "../services/platformLimits";
 import { uploadChatAttachment } from "../services/chatAttachments";
 import type { ScoreFlag } from "../types";
-
-const steps = ["Basic Info", "Qualifications", "Availability", "Documents", "Consent", "Pricing", "Review"];
-
-function stepErrors(
-  stepNum: number,
-  fields: {
-    first: string;
-    last: string;
-    state: string;
-    phone: string;
-    cdlClass: string;
-    yearsExp: number | "";
-    availDate: string;
-    equipment: string;
-    routePref: string;
-    driverType: string;
-    documents: string[];
-    consent: boolean;
-    price: number | "";
-  }
-): string[] {
-  const errs: string[] = [];
-  if (stepNum === 1) {
-    if (!fields.first.trim()) errs.push("First name is required");
-    if (!fields.last.trim()) errs.push("Last name is required");
-    if (!fields.state) errs.push("State is required");
-    if (!fields.phone.trim()) errs.push("Phone number is required");
-  }
-  if (stepNum === 2) {
-    if (!fields.cdlClass) errs.push("CDL class is required");
-    if (fields.yearsExp === "") errs.push("Years of experience is required");
-  }
-  if (stepNum === 3) {
-    if (!fields.availDate) errs.push("Availability date is required");
-    if (!fields.equipment) errs.push("Equipment preference is required");
-    if (!fields.routePref) errs.push("Route preference is required");
-    if (!fields.driverType) errs.push("Driver type is required");
-  }
-  if (stepNum === 4) {
-    if (!fields.documents.length) errs.push("Upload at least one document");
-  }
-  if (stepNum === 5) {
-    if (!fields.consent) errs.push("Driver consent confirmation is required");
-  }
-  if (stepNum === 6) {
-    if (fields.price === "") errs.push("Listing price is required");
-  }
-  return errs;
-}
-
-function stepComplete(stepNum: number, fields: Parameters<typeof stepErrors>[1]): boolean {
-  return stepErrors(stepNum, fields).length === 0;
-}
 
 export default function SellPage() {
   const navigate = useNavigate();
@@ -72,6 +27,7 @@ export default function SellPage() {
   const [step, setStep] = useState(1);
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [publishErrors, setPublishErrors] = useState<string[]>([]);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [state, setState] = useState("");
@@ -123,6 +79,7 @@ export default function SellPage() {
     try {
       const uploaded = await uploadChatAttachment(file, "listings");
       setDocuments((prev) => [...prev, uploaded.name]);
+      setPublishErrors([]);
       showToast(`Uploaded: ${uploaded.name}`, "success");
     } catch {
       showToast("Failed to upload document", "error");
@@ -132,18 +89,13 @@ export default function SellPage() {
   };
 
   const validateCurrentStep = (): boolean => {
-    const errs = stepErrors(step, fieldSnapshot);
+    const errs = listingStepErrors(step, fieldSnapshot);
     if (errs.length) {
+      setPublishErrors(errs.map((e) => `Step ${step} (${LISTING_STEPS[step - 1]}): ${e}`));
       showToast(errs[0], "error");
       return false;
     }
-    if (step === 6 && price !== "") {
-      const capError = validateRecruiterListPrice(Number(price), driverType);
-      if (capError) {
-        showToast(capError, "error");
-        return false;
-      }
-    }
+    setPublishErrors([]);
     return true;
   };
 
@@ -154,37 +106,32 @@ export default function SellPage() {
       return;
     }
     for (let s = step; s < target; s += 1) {
-      const errs = stepErrors(s, fieldSnapshot);
+      const errs = listingStepErrors(s, fieldSnapshot);
       if (errs.length) {
+        setPublishErrors(errs.map((e) => `Step ${s} (${LISTING_STEPS[s - 1]}): ${e}`));
         showToast(`Complete step ${s} first: ${errs[0]}`, "error");
         setStep(s);
         return;
       }
     }
+    setPublishErrors([]);
     setStep(target);
   };
 
   const publish = async () => {
-    for (let s = 1; s <= 6; s += 1) {
-      const errs = stepErrors(s, fieldSnapshot);
-      if (errs.length) {
-        showToast(errs[0], "error");
-        setStep(s);
-        return;
-      }
-    }
-    if (price === "") {
-      showToast("Listing price is required", "error");
-      setStep(6);
+    const issues = collectListingIssues(fieldSnapshot);
+    if (issues.length) {
+      const flat = issues.flatMap((issue) =>
+        issue.errors.map((e) => `Step ${issue.step} (${issue.stepName}): ${e}`)
+      );
+      setPublishErrors(flat);
+      setStep(issues[0].step);
+      showToast(formatListingIssuesForToast(issues), "error");
       return;
     }
-    const capError = validateRecruiterListPrice(Number(price), driverType);
-    if (capError) {
-      showToast(capError, "error");
-      setStep(6);
-      return;
-    }
+
     setSubmitting(true);
+    setPublishErrors([]);
     try {
       await createListing({
         firstName: first.trim(),
@@ -211,9 +158,12 @@ export default function SellPage() {
       navigate("/my-listings");
     } catch (e) {
       if (e instanceof PlatformLimitError) {
+        setPublishErrors([e.message]);
         showToast(e.message, "error");
       } else {
-        showToast("Failed to publish listing", "error");
+        const messages = formatListingPublishError(e);
+        setPublishErrors(messages);
+        showToast(messages[0] ?? "Failed to publish listing", "error");
       }
     } finally {
       setSubmitting(false);
@@ -223,6 +173,7 @@ export default function SellPage() {
   const next = () => {
     if (!validateCurrentStep()) return;
     if (step < 7) {
+      setPublishErrors([]);
       setStep((s) => s + 1);
     } else {
       void publish();
@@ -236,11 +187,21 @@ export default function SellPage() {
         <p className="t-caption t-secondary platform-limit-banner">{limitNote}</p>
       ) : null}
       <div className="card"><div className="card-body">
+        {publishErrors.length > 0 ? (
+          <div className="listing-publish-errors" role="alert">
+            <strong>Fix these issues before publishing:</strong>
+            <ul>
+              {publishErrors.map((err) => (
+                <li key={err}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className="form-steps" id="formSteps">
-          {steps.map((s, i) => {
+          {LISTING_STEPS.map((s, i) => {
             const n = i + 1;
-            const complete = n < step || (n !== step && stepComplete(n, fieldSnapshot));
-            const invalid = n < step && !stepComplete(n, fieldSnapshot);
+            const complete = n < step || (n !== step && listingStepComplete(n, fieldSnapshot));
+            const invalid = n < step && !listingStepComplete(n, fieldSnapshot);
             return (
               <button
                 key={s}
@@ -257,30 +218,30 @@ export default function SellPage() {
         <div className={`form-step ${step === 1 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 1: Driver Basic Info</h3>
           <div className="form-row">
-            <div className="form-group"><label>First Name *</label><input value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First name" required /></div>
-            <div className="form-group"><label>Last Name *</label><input value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last name" required /></div>
+            <div className="form-group"><label>First Name *</label><input value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First name" /></div>
+            <div className="form-group"><label>Last Name *</label><input value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last name" /></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label>State *</label>
-              <select value={state} onChange={(e) => setState(e.target.value)} required>
+              <select value={state} onChange={(e) => setState(e.target.value)}>
                 <option value="">Select state</option>
                 {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Phone *</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" required /></div>
+            <div className="form-group"><label>Phone *</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" /></div>
           </div>
-          <div className="form-group"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address (optional)" /></div>
+          <div className="form-group"><label>Email (optional)</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address (optional)" /></div>
         </div>
         <div className={`form-step ${step === 2 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 2: Qualification Details</h3>
           <div className="form-row">
             <div className="form-group"><label>CDL Class *</label>
-              <select value={cdlClass} onChange={(e) => setCdlClass(e.target.value)} required><option>Class A</option><option>Class B</option><option>Class C</option></select>
+              <select value={cdlClass} onChange={(e) => setCdlClass(e.target.value)}><option>Class A</option><option>Class B</option><option>Class C</option></select>
             </div>
-            <div className="form-group"><label>CDL Number</label><input value={cdlNumber} onChange={(e) => setCdlNumber(e.target.value)} placeholder="CDL number (optional)" /></div>
+            <div className="form-group"><label>CDL Number (optional)</label><input value={cdlNumber} onChange={(e) => setCdlNumber(e.target.value)} placeholder="Leave blank if not available yet" /></div>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>Years Experience *</label><input type="number" min={0} value={yearsExp} onChange={(e) => setYearsExp(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Years" required /></div>
+            <div className="form-group"><label>Years Experience *</label><input type="number" min={0} value={yearsExp} onChange={(e) => setYearsExp(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Years" /></div>
             <div className="form-group"><label>CDL Score Status</label>
               <select value={scoreFlag} onChange={(e) => setScoreFlag(e.target.value as ScoreFlag)}>
                 <option value="green">Green — Clean Record</option>
@@ -289,25 +250,25 @@ export default function SellPage() {
               </select>
             </div>
           </div>
-          <div className="form-group"><label>Endorsements</label><input value={endorsements} onChange={(e) => setEndorsements(e.target.value)} placeholder="Hazmat, Tanker, Doubles/Triples" /></div>
+          <div className="form-group"><label>Endorsements (optional)</label><input value={endorsements} onChange={(e) => setEndorsements(e.target.value)} placeholder="Hazmat, Tanker, Doubles/Triples" /></div>
         </div>
         <div className={`form-step ${step === 3 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 3: Availability & Preferences</h3>
           <div className="form-row">
-            <div className="form-group"><label>Available Date *</label><input type="date" value={availDate} onChange={(e) => setAvailDate(e.target.value)} required /></div>
+            <div className="form-group"><label>Available Date *</label><input type="date" value={availDate} onChange={(e) => setAvailDate(e.target.value)} /></div>
             <div className="form-group"><label>Equipment Preference *</label>
-              <select value={equipment} onChange={(e) => setEquipment(e.target.value)} required><option>Dry Van</option><option>Reefer</option><option>Flatbed</option><option>Tanker</option></select>
+              <select value={equipment} onChange={(e) => setEquipment(e.target.value)}><option>Dry Van</option><option>Reefer</option><option>Flatbed</option><option>Tanker</option></select>
             </div>
           </div>
           <div className="form-group"><label>Route Preference *</label>
-            <select value={routePref} onChange={(e) => setRoutePref(e.target.value)} required><option>OTR</option><option>Regional</option><option>Local</option><option>Dedicated</option></select>
+            <select value={routePref} onChange={(e) => setRoutePref(e.target.value)}><option>OTR</option><option>Regional</option><option>Local</option><option>Dedicated</option></select>
           </div>
           <div className="form-group"><label>Driver Type *</label>
-            <select value={driverType} onChange={(e) => setDriverType(e.target.value)} required>
+            <select value={driverType} onChange={(e) => setDriverType(e.target.value)}>
               {DRIVER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          <div className="form-group"><label>Additional Notes for Buyers</label><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Driver preferences, restrictions, special qualifications..." /></div>
+          <div className="form-group"><label>Additional Notes for Buyers (optional)</label><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Driver preferences, restrictions, special qualifications..." /></div>
         </div>
         <div className={`form-step ${step === 4 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 4: Upload Documents *</h3>
@@ -356,21 +317,30 @@ export default function SellPage() {
           <h3 style={{ marginBottom: 16 }}>Step 6: Pricing</h3>
           <div className="form-row">
             <div className="form-group">
-              <label>Listing Price *</label>
+              <label>Listing Price (USD) *</label>
               <input
                 type="number"
-                value={price}
-                min={50}
+                inputMode="numeric"
+                min={1}
                 max={priceCap}
-                placeholder="Listing price"
-                required
-                onChange={(e) => setPrice(e.target.value === "" ? "" : Math.min(priceCap, Math.max(50, Number(e.target.value) || 50)))}
+                step={1}
+                value={price}
+                placeholder={`Enter amount up to ${priceCap}`}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "") {
+                    setPrice("");
+                    return;
+                  }
+                  const n = Number(raw);
+                  if (Number.isFinite(n)) setPrice(n);
+                }}
               />
-              <span className="t-caption t-secondary">Max {fmtPrice(priceCap)} for {driverType}</span>
+              <span className="t-caption t-secondary">Enter any whole-dollar amount from $50 up to {fmtPrice(priceCap)} for {driverType}.</span>
             </div>
             <div className="form-group">
               <label>Listing Duration *</label>
-              <select value={listingDurationDays} onChange={(e) => setListingDurationDays(Number(e.target.value))} required>
+              <select value={listingDurationDays} onChange={(e) => setListingDurationDays(Number(e.target.value))}>
                 {[1, 2, 3, 4, 5, 6, 7].map((d) => (
                   <option key={d} value={d}>{d} day{d === 1 ? "" : "s"}</option>
                 ))}
