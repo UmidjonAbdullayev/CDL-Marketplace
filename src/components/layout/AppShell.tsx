@@ -6,6 +6,7 @@ import { Modal } from "./Modal";
 import { ToastContainer } from "./ToastContainer";
 import { StickyUpgradeBanner } from "./StickyUpgradeBanner";
 import { PaymentProcessingBanner } from "../billing/PaymentProcessingBanner";
+import { WalletDepositPendingBanner } from "../billing/WalletDepositPendingBanner";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
 import { canActAsCarrier, isSellerNav } from "../../lib/account-capabilities";
@@ -85,6 +86,7 @@ export function AppShell() {
           {canActAsCarrier(sessionUser) && sessionUser ? (
             <div className="content-banner-wrap">
               <PaymentProcessingBanner plan={sessionUser.selectedPlan} status={sessionUser.status} />
+              <WalletDepositPendingBanner />
             </div>
           ) : null}
           <Outlet />

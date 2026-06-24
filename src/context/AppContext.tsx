@@ -14,6 +14,7 @@ import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchCompanyById } from "../services/company";
 import { buildSessionAccount, fetchRegistrationById } from "../services/registration";
 import { DisputeForm } from "../components/DisputeForm";
+import { WalletDepositPanel } from "../components/billing/WalletDepositPanel";
 import {
   fetchListingCardById,
   fetchPurchasedIds,
@@ -55,6 +56,8 @@ interface AppContextValue {
   openModal: (title: string, body: ReactNode, footer?: ReactNode) => void;
   closeModal: () => void;
   refreshUserState: () => Promise<void>;
+  refreshWalletBalance: () => Promise<void>;
+  openDepositModal: () => void;
   buyDriver: (id: number, amount: number) => Promise<void>;
   reserveDriver: (id: number) => Promise<void>;
   openBuyModal: (id: number, onComplete?: () => void) => void;
@@ -104,6 +107,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionUser?.companyId]);
 
+  const refreshWalletBalance = useCallback(async () => {
+    if (!sessionUser?.companyId || !isSupabaseConfigured) return;
+    try {
+      const company = await fetchCompanyById(sessionUser.companyId);
+      if (!company) return;
+      const walletBalance = Number(company.wallet_balance ?? 0);
+      setSessionUser((prev) => {
+        if (!prev || prev.companyId !== sessionUser.companyId) return prev;
+        if (prev.walletBalance === walletBalance) return prev;
+        const next = { ...prev, walletBalance };
+        writeSession(next);
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to refresh wallet balance", err);
+    }
+  }, [sessionUser?.companyId]);
+
   const signIn = useCallback((user: SessionUser) => {
     writeSession(user);
     setActiveCompanyId(user.companyId || null);
@@ -140,7 +161,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             prev.companyId !== fresh.companyId ||
             prev.plan !== fresh.plan ||
             prev.profileVerified !== fresh.profileVerified ||
-            prev.status !== fresh.status;
+            prev.status !== fresh.status ||
+            prev.walletBalance !== fresh.walletBalance;
           if (changed) {
             writeSession(fresh);
             return fresh;
@@ -327,6 +349,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [closeModal, openModal, showToast]);
 
+  const openDepositModal = useCallback(() => {
+    openModal(
+      "Deposit Funds",
+      <WalletDepositPanel onDepositStarted={() => invalidateDataViews(["dashboard"])} />,
+      <button type="button" className="btn btn-secondary" onClick={closeModal}>Close</button>
+    );
+  }, [closeModal, openModal]);
+
   const value = useMemo<AppContextValue>(
     () => ({
       purchased,
@@ -345,6 +375,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openModal,
       closeModal,
       refreshUserState,
+      refreshWalletBalance,
+      openDepositModal,
       buyDriver,
       reserveDriver,
       openBuyModal,
@@ -353,7 +385,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isPurchased: (id: number) => purchased.has(id),
       isReserved: (id: number) => reserved.has(id)
     }),
-    [purchased, reserved, dataReady, sessionUser, signIn, signOut, toasts, modal, searchQuery, debouncedSearch, showToast, openModal, closeModal, refreshUserState, buyDriver, reserveDriver, openBuyModal, openReserveModal, openDisputeModal]
+    [purchased, reserved, dataReady, sessionUser, signIn, signOut, toasts, modal, searchQuery, debouncedSearch, showToast, openModal, closeModal, refreshUserState, refreshWalletBalance, openDepositModal, buyDriver, reserveDriver, openBuyModal, openReserveModal, openDisputeModal]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

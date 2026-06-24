@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   AlertTriangle,
@@ -20,6 +21,7 @@ import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
 import { canAccessAdminPanel, isSellerNav } from "../../lib/account-capabilities";
 import { fmtPrice } from "../../lib/format";
+import { fetchCompanyPendingDeposit } from "../../services/wallet";
 
 type NavItem = {
   to: string;
@@ -65,8 +67,26 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () => void }) {
   const location = useLocation();
-  const { showToast, sessionUser, setSearchQuery } = useApp();
+  const { openDepositModal, sessionUser, setSearchQuery } = useApp();
   const { badges } = useExchangeData();
+  const [pendingDeposit, setPendingDeposit] = useState<number | null>(null);
+
+  const loadPendingDeposit = useCallback(async () => {
+    if (!sessionUser?.companyId) {
+      setPendingDeposit(null);
+      return;
+    }
+    try {
+      const row = await fetchCompanyPendingDeposit(sessionUser.companyId);
+      setPendingDeposit(row?.amount ?? null);
+    } catch {
+      setPendingDeposit(null);
+    }
+  }, [sessionUser?.companyId]);
+
+  useEffect(() => {
+    void loadPendingDeposit();
+  }, [loadPendingDeposit, sessionUser?.walletBalance]);
 
   const isSeller = isSellerNav(sessionUser);
 
@@ -130,7 +150,10 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () =
         <div className="wallet-card">
           <div className="wallet-balance-label">Wallet Balance</div>
           <div className="wallet-balance">{fmtPrice(sessionUser?.walletBalance ?? 0)}</div>
-          <button className="btn-deposit" type="button" onClick={() => showToast("Deposit funds", "success")}>
+          {pendingDeposit ? (
+            <div className="wallet-pending-note">Pending deposit: {fmtPrice(pendingDeposit)}</div>
+          ) : null}
+          <button className="btn-deposit" type="button" onClick={openDepositModal}>
             Deposit Funds
           </button>
         </div>
