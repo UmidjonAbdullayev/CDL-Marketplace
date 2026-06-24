@@ -10,14 +10,11 @@ import {
 } from "../../services/platformLimits";
 
 export function CompanyLimitsPanel() {
-  const { sessionUser, showToast } = useApp();
+  const { sessionUser, showToast, openModal, closeModal } = useApp();
   const [rows, setRows] = useState<CompanyLimitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
-  const [editing, setEditing] = useState<CompanyLimitRow | null>(null);
-  const [hireCap, setHireCap] = useState<string>("");
-  const [listingCap, setListingCap] = useState<string>("");
-  const [busy, setBusy] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const isManager = isPlatformManager(sessionUser);
 
@@ -37,6 +34,80 @@ export function CompanyLimitsPanel() {
     void load();
   }, [load]);
 
+  const openEdit = (row: CompanyLimitRow) => {
+    let hireCap = row.max_active_hires != null ? String(row.max_active_hires) : "";
+    let listingCap = row.max_active_listings != null ? String(row.max_active_listings) : "";
+
+    const save = async () => {
+      setSavingId(row.id);
+      try {
+        await updateCompanyLimits(row.id, {
+          maxActiveHires: hireCap.trim() === "" ? null : Math.max(0, Number(hireCap) || 0),
+          maxActiveListings: listingCap.trim() === "" ? null : Math.max(0, Number(listingCap) || 0)
+        });
+        closeModal();
+        showToast(`Limits updated for ${row.name}`, "success");
+        await load();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to save limits";
+        showToast(msg, "error");
+      } finally {
+        setSavingId(null);
+      }
+    };
+
+    openModal(
+      `Trust limits — ${row.name}`,
+      <div className="company-limits-edit-form">
+        <p className="t-caption t-secondary" style={{ marginBottom: 16 }}>
+          Tier defaults for this company: carriers{" "}
+          {row.completed_as_buyer >= 1 ? TRUSTED_LIMITS.carrierActiveHires : STARTER_LIMITS.carrierActiveHires} hires ·
+          sellers{" "}
+          {row.completed_as_seller >= 1 ? TRUSTED_LIMITS.recruiterActiveListings : STARTER_LIMITS.recruiterActiveListings}{" "}
+          listings. Leave a field blank to use the tier default.
+        </p>
+        <div className="form-group">
+          <label htmlFor={`hire-cap-${row.id}`}>Max active hires (carriers)</label>
+          <input
+            id={`hire-cap-${row.id}`}
+            type="number"
+            min={0}
+            placeholder="Tier default"
+            defaultValue={hireCap}
+            onChange={(e) => { hireCap = e.target.value; }}
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor={`listing-cap-${row.id}`}>Max active listings (recruiters)</label>
+          <input
+            id={`listing-cap-${row.id}`}
+            type="number"
+            min={0}
+            placeholder="Tier default"
+            defaultValue={listingCap}
+            onChange={(e) => { listingCap = e.target.value; }}
+          />
+        </div>
+        <p className="t-caption t-secondary">
+          Currently: {row.active_hires} active hire{row.active_hires === 1 ? "" : "s"} · {row.active_listings} active listing{row.active_listings === 1 ? "" : "s"}
+        </p>
+      </div>,
+      <>
+        <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={savingId === row.id}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={savingId === row.id}
+          onClick={() => void save()}
+        >
+          {savingId === row.id ? "Saving…" : "Save limits"}
+        </button>
+      </>
+    );
+  };
+
   if (!isManager) {
     return (
       <div className="card">
@@ -52,30 +123,6 @@ export function CompanyLimitsPanel() {
     const q = filter.trim().toLowerCase();
     return r.name.toLowerCase().includes(q) || r.company_type.includes(q);
   });
-
-  const openEdit = (row: CompanyLimitRow) => {
-    setEditing(row);
-    setHireCap(row.max_active_hires != null ? String(row.max_active_hires) : "");
-    setListingCap(row.max_active_listings != null ? String(row.max_active_listings) : "");
-  };
-
-  const save = async () => {
-    if (!editing) return;
-    setBusy(true);
-    try {
-      await updateCompanyLimits(editing.id, {
-        maxActiveHires: hireCap.trim() === "" ? null : Math.max(0, Number(hireCap) || 0),
-        maxActiveListings: listingCap.trim() === "" ? null : Math.max(0, Number(listingCap) || 0)
-      });
-      showToast(`Limits updated for ${editing.name}`, "success");
-      setEditing(null);
-      await load();
-    } catch {
-      showToast("Failed to save limits", "error");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div className="company-limits-panel">
@@ -133,7 +180,14 @@ export function CompanyLimitsPanel() {
                     <td>{r.max_active_hires ?? "Tier default"}</td>
                     <td>{r.max_active_listings ?? "Tier default"}</td>
                     <td>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(r)}>Edit</button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={savingId === r.id}
+                        onClick={() => openEdit(r)}
+                      >
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -142,44 +196,6 @@ export function CompanyLimitsPanel() {
           </table>
         </div>
       </div>
-
-      {editing ? (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="card" style={{ maxWidth: 420, width: "100%" }}>
-            <div className="card-header"><h3>Limits — {editing.name}</h3></div>
-            <div className="card-body">
-              <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
-                Tier defaults: carriers {editing.completed_as_buyer >= 1 ? TRUSTED_LIMITS.carrierActiveHires : STARTER_LIMITS.carrierActiveHires} hires ·
-                sellers {editing.completed_as_seller >= 1 ? TRUSTED_LIMITS.recruiterActiveListings : STARTER_LIMITS.recruiterActiveListings} listings
-              </p>
-              <div className="form-group">
-                <label>Max active hires (carriers)</label>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="Tier default"
-                  value={hireCap}
-                  onChange={(e) => setHireCap(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label>Max active listings (recruiters)</label>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="Tier default"
-                  value={listingCap}
-                  onChange={(e) => setListingCap(e.target.value)}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -85,7 +85,7 @@ export default function MyListingsPage() {
         };
 
         openModal(
-          "Edit Listing",
+          `Edit Listing${detail.status === "active" ? " (live)" : ""}`,
           <div className="listing-edit-form scroll-y" style={{ maxHeight: "60vh" }}>
             <div className="form-row">
               <div className="form-group"><label>First Name *</label><input defaultValue={form.firstName} onChange={(e) => { form.firstName = e.target.value; }} /></div>
@@ -100,15 +100,31 @@ export default function MyListingsPage() {
               </div>
               <div className="form-group"><label>Phone *</label><input defaultValue={form.phone} onChange={(e) => { form.phone = e.target.value; }} /></div>
             </div>
+            <div className="form-group"><label>Email (optional)</label><input defaultValue={form.email} onChange={(e) => { form.email = e.target.value; }} /></div>
             <div className="form-row">
               <div className="form-group"><label>CDL Class *</label>
                 <select defaultValue={form.cdlClass} onChange={(e) => { form.cdlClass = e.target.value; }}>
                   <option>Class A</option><option>Class B</option><option>Class C</option>
                 </select>
               </div>
+              <div className="form-group"><label>CDL Number (optional)</label>
+                <input defaultValue={form.cdlNumber} onChange={(e) => { form.cdlNumber = e.target.value; }} placeholder="Leave blank if unknown" />
+              </div>
+            </div>
+            <div className="form-row">
               <div className="form-group"><label>Years Experience *</label>
                 <input type="number" min={0} defaultValue={form.yearsExp} onChange={(e) => { form.yearsExp = Number(e.target.value) || 0; }} />
               </div>
+              <div className="form-group"><label>CDL Score Status</label>
+                <select defaultValue={form.scoreFlag} onChange={(e) => { form.scoreFlag = e.target.value as ScoreFlag; }}>
+                  <option value="green">Green</option>
+                  <option value="yellow">Yellow</option>
+                  <option value="red">Red</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-group"><label>Endorsements (optional)</label>
+              <input defaultValue={form.endorsements} onChange={(e) => { form.endorsements = e.target.value; }} />
             </div>
             <div className="form-row">
               <div className="form-group"><label>Available Date *</label>
@@ -156,7 +172,14 @@ export default function MyListingsPage() {
                 </select>
               </div>
             </div>
-            <p className="t-caption t-secondary">Changes require admin re-approval before the listing goes live again.</p>
+            <div className="form-group"><label>Notes (optional)</label>
+              <textarea rows={2} defaultValue={form.notes} onChange={(e) => { form.notes = e.target.value; }} />
+            </div>
+            <p className="t-caption t-secondary">
+              {detail.status === "active" || detail.status === "paused"
+                ? "Active listings stay live after edits. Changing the price sends the listing back for admin re-approval."
+                : "Changes require admin re-approval before the listing goes live."}
+            </p>
           </div>,
           <>
             <button className="btn btn-secondary" type="button" onClick={closeModal}>Cancel</button>
@@ -170,29 +193,38 @@ export default function MyListingsPage() {
                 showToast(err, "error");
                 return;
               }
-              void updateListing(row.id, {
-                firstName: form.firstName.trim(),
-                lastName: form.lastName.trim(),
-                state: form.state,
-                phone: form.phone.trim(),
-                email: form.email.trim() || undefined,
-                cdlClass: form.cdlClass,
-                cdlNumber: form.cdlNumber.trim() || undefined,
-                yearsExp: form.yearsExp,
-                scoreFlag: form.scoreFlag,
-                endorsements: form.endorsements.split(",").map((e) => e.trim()).filter(Boolean),
-                availableDate: form.availDate,
-                equipment: form.equipment,
-                routePref: form.routePref,
-                notes: form.notes.trim(),
-                price: form.price,
-                driverType: form.driverType,
-                listingDurationDays: form.listingDurationDays,
-                documents: detail.documents ?? undefined
-              })
-                .then(() => {
+              void updateListing(
+                row.id,
+                {
+                  firstName: form.firstName.trim(),
+                  lastName: form.lastName.trim(),
+                  state: form.state,
+                  phone: form.phone.trim(),
+                  email: form.email.trim() || undefined,
+                  cdlClass: form.cdlClass,
+                  cdlNumber: form.cdlNumber.trim() || undefined,
+                  yearsExp: form.yearsExp,
+                  scoreFlag: form.scoreFlag,
+                  endorsements: form.endorsements.split(",").map((e) => e.trim()).filter(Boolean),
+                  availableDate: form.availDate,
+                  equipment: form.equipment,
+                  routePref: form.routePref,
+                  notes: form.notes.trim(),
+                  price: form.price,
+                  driverType: form.driverType,
+                  listingDurationDays: form.listingDurationDays,
+                  documents: detail.documents ?? undefined
+                },
+                { previousStatus: detail.status, previousPrice: detail.price }
+              )
+                .then(({ reapprovalRequired }) => {
                   closeModal();
-                  showToast("Listing updated — pending admin re-approval", "success");
+                  showToast(
+                    reapprovalRequired
+                      ? "Listing updated — pending admin re-approval (price changed)"
+                      : "Listing updated successfully",
+                    "success"
+                  );
                   invalidateDataViews(["my-listings", "marketplace", "dashboard", "admin"]);
                   refreshMyListings(true);
                 })
@@ -235,9 +267,12 @@ export default function MyListingsPage() {
 
   const renderActions = (row: SellerListingRow) => {
     if (tab === "sold" || tab === "expired" || row.status === "hiring") return null;
+    const canEdit = ["pending", "active", "paused"].includes(row.status);
     return (
       <>
-        <button className="btn btn-ghost btn-sm" type="button" disabled={editLoading} onClick={() => editListing(row)}>Edit Listing</button>
+        {canEdit ? (
+          <button className="btn btn-ghost btn-sm" type="button" disabled={editLoading} onClick={() => editListing(row)}>Edit Listing</button>
+        ) : null}
         {row.status !== "pending" && row.status !== "sold" ? (
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => togglePause(row)}>
             {row.status === "paused" ? "Resume" : "Pause"}

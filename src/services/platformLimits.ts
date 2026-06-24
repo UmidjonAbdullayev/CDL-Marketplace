@@ -118,6 +118,12 @@ async function fetchCompanyLimitOverrides(companyId: string): Promise<{
   };
 }
 
+function defaultHireLimit(completedAsBuyer: number, custom: number | null): { limit: number; tier: LimitTier } {
+  if (custom != null && custom >= 0) return { limit: custom, tier: "custom" };
+  if (completedAsBuyer >= 1) return { limit: TRUSTED_LIMITS.carrierActiveHires, tier: "trusted" };
+  return { limit: STARTER_LIMITS.carrierActiveHires, tier: "starter" };
+}
+
 function defaultListingLimit(completedAsSeller: number, custom: number | null): { limit: number; tier: LimitTier } {
   if (custom != null && custom >= 0) return { limit: custom, tier: "custom" };
   if (completedAsSeller >= 1) return { limit: TRUSTED_LIMITS.recruiterActiveListings, tier: "trusted" };
@@ -159,16 +165,26 @@ export async function resolveHireLimit(buyerCompanyId: string): Promise<CompanyL
     };
   }
 
-  const planLimit = activeHireLimitForPlan(plan);
-  const limit =
-    overrides.max_active_hires != null && overrides.max_active_hires >= 0
-      ? overrides.max_active_hires
-      : planLimit ?? 999;
+  const isPaidActive = status === "active" && plan && plan !== "free";
+  let limit: number;
+  let tier: LimitTier;
+
+  if (overrides.max_active_hires != null && overrides.max_active_hires >= 0) {
+    limit = overrides.max_active_hires;
+    tier = "custom";
+  } else if (isPaidActive) {
+    limit = activeHireLimitForPlan(plan) ?? 999;
+    tier = "plan";
+  } else {
+    const trust = defaultHireLimit(completedDeals, null);
+    limit = trust.limit;
+    tier = trust.tier;
+  }
 
   return {
     companyId: buyerCompanyId,
     role: "carrier",
-    tier: overrides.max_active_hires != null ? "custom" : "plan",
+    tier,
     limit,
     used: activeHires,
     completedDeals,
@@ -213,6 +229,8 @@ export async function assertCanStartHiring(buyerCompanyId?: string): Promise<Com
         msg =
           "Free preview accounts are limited to one hire total (active or completed). Upgrade to a paid plan on Pricing to hire more drivers.";
       }
+    } else if (snapshot.tier === "starter" || snapshot.tier === "trusted") {
+      msg = `You have reached your limit of ${snapshot.limit} active hire${snapshot.limit === 1 ? "" : "s"}. Complete a deal to unlock more capacity, or contact your platform manager for a custom limit.`;
     } else if (snapshot.limit >= 999) {
       msg = "Unable to start a new hire. Contact platform support.";
     } else {
@@ -259,28 +277,18 @@ export async function fetchCompaniesForLimitManagement(): Promise<CompanyLimitRo
   if (!companies?.length) return [];
 
   const ids = companies.map((c) => c.id);
-  const idList = ids.join(",");
-  const [{ data: deals }, { data: listings }] = await Promise.all([
-    supabase
-      .from("deals")
-      .select("buyer_company_id, seller_company_id, status, hiring_stage")
-      .or(`buyer_company_id.in.(${idList}),seller_company_id.in.(${idList})`),
+  const [{ data: buyerDeals }, { data: sellerDeals }, { data: listings }] = await Promise.all([
+    supabase.from("deals").select("buyer_company_id, status, hiring_stage").in("buyer_company_id", ids),
+    supabase.from("deals").select("seller_company_id, status").in("seller_company_id", ids),
     supabase.from("driver_listings").select("seller_company_id, status").in("seller_company_id", ids)
   ]);
 
   return companies.map((c) => {
-    const companyDeals = (deals ?? []).filter(
-      (d) => d.buyer_company_id === c.id || d.seller_company_id === c.id
-    );
-    const completedAsBuyer = companyDeals.filter(
-      (d) => d.buyer_company_id === c.id && isCompletedDeal(d.status)
-    ).length;
-    const completedAsSeller = companyDeals.filter(
-      (d) => d.seller_company_id === c.id && isCompletedDeal(d.status)
-    ).length;
-    const activeHires = companyDeals.filter(
-      (d) => d.buyer_company_id === c.id && isActiveDeal(d.status, d.hiring_stage ?? "")
-    ).length;
+    const companyBuyerDeals = (buyerDeals ?? []).filter((d) => d.buyer_company_id === c.id);
+    const companySellerDeals = (sellerDeals ?? []).filter((d) => d.seller_company_id === c.id);
+    const completedAsBuyer = companyBuyerDeals.filter((d) => isCompletedDeal(d.status)).length;
+    const completedAsSeller = companySellerDeals.filter((d) => isCompletedDeal(d.status)).length;
+    const activeHires = companyBuyerDeals.filter((d) => isActiveDeal(d.status, d.hiring_stage ?? "")).length;
     const activeListings = (listings ?? []).filter(
       (l) =>
         l.seller_company_id === c.id &&
@@ -310,8 +318,9 @@ export async function updateCompanyLimits(
   if (limits.maxActiveHires !== undefined) payload.max_active_hires = limits.maxActiveHires;
   if (limits.maxActiveListings !== undefined) payload.max_active_listings = limits.maxActiveListings;
   if (!Object.keys(payload).length) return;
-  const { error } = await supabase.from("companies").update(payload).eq("id", companyId);
-  if (error) throw error;
+  const { data, error } = await supabase.from("companies").update(payload).eq("id", companyId).select("id").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Company not found or you do not have permission to update limits");
 }
 
 export function limitHint(snapshot: CompanyLimitSnapshot): string {
@@ -322,6 +331,12 @@ export function limitHint(snapshot: CompanyLimitSnapshot): string {
         return `${remaining} of ${snapshot.limit} hire slot remaining while payment is verified.`;
       }
       return `${remaining} of ${snapshot.limit} lifetime hire slot${snapshot.limit === 1 ? "" : "s"} on free preview.`;
+    }
+    if (snapshot.tier === "starter") {
+      return `${remaining} of ${snapshot.limit} active hire${snapshot.limit === 1 ? "" : "s"} remaining. Complete your first hire to unlock ${TRUSTED_LIMITS.carrierActiveHires}.`;
+    }
+    if (snapshot.tier === "trusted") {
+      return `${remaining} of ${snapshot.limit} active hires remaining (trust tier).`;
     }
     if (snapshot.limit >= 999) return "Unlimited active hires on your plan.";
     return `${remaining} of ${snapshot.limit} active hire${snapshot.limit === 1 ? "" : "s"} remaining on your plan.`;

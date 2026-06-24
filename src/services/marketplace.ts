@@ -1037,8 +1037,17 @@ export async function fetchSellerListingDetail(listingId: number): Promise<Selle
   return data as SellerListingDetail | null;
 }
 
-export async function updateListing(listingId: number, input: UpdateListingInput): Promise<void> {
-  if (!supabase) return;
+export type UpdateListingMeta = {
+  previousStatus: string;
+  previousPrice: number;
+};
+
+export async function updateListing(
+  listingId: number,
+  input: UpdateListingInput,
+  meta?: UpdateListingMeta
+): Promise<{ reapprovalRequired: boolean }> {
+  if (!supabase) throw new Error("Supabase not configured");
   const capError = validateRecruiterListPrice(input.price, input.driverType);
   if (capError) throw new Error(capError);
 
@@ -1047,7 +1056,11 @@ export async function updateListing(listingId: number, input: UpdateListingInput
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + durationDays);
 
-  const { error } = await supabase.from("driver_listings").update({
+  const reapprovalRequired = meta ? input.price !== meta.previousPrice : true;
+  const keepLiveStatus = meta && !reapprovalRequired && ["active", "paused"].includes(meta.previousStatus);
+  const nextStatus = keepLiveStatus ? meta.previousStatus : "pending";
+
+  const payload: Record<string, unknown> = {
     first_name: input.firstName,
     last_name: input.lastName,
     state: input.state,
@@ -1065,17 +1078,34 @@ export async function updateListing(listingId: number, input: UpdateListingInput
     price: pricing.listPrice,
     platform_fee: pricing.platformFee,
     net_payout: pricing.netPayout,
-    carrier_price: null,
-    admin_markup: 0,
     driver_type: input.driverType,
     listing_duration_days: durationDays,
     expires_at: expiresAt.toISOString(),
     documents: input.documents?.length ? input.documents : ["CDL Copy"],
-    status: "pending",
+    status: nextStatus,
     updated_at: new Date().toISOString()
-  }).eq("id", listingId).eq("seller_company_id", getActiveCompanyId());
-  if (error) throw error;
-  await autoAssignListing(listingId);
+  };
+
+  if (reapprovalRequired) {
+    payload.carrier_price = null;
+    payload.admin_markup = 0;
+  }
+
+  const { data, error } = await supabase
+    .from("driver_listings")
+    .update(payload)
+    .eq("id", listingId)
+    .eq("seller_company_id", getActiveCompanyId())
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Listing not found or you do not have permission to edit it");
+
+  if (reapprovalRequired) {
+    await autoAssignListing(listingId);
+  }
+
+  return { reapprovalRequired };
 }
 
 export async function createListing(input: NewListingInput): Promise<number> {
