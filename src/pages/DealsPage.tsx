@@ -42,7 +42,10 @@ export default function DealsPage() {
       .then(() => {
         const txt = map[status]?.txt ?? status;
         showToast(`Deal updated: ${txt}`, "success");
-        if (status === "Completed") showToast("Escrow released to seller", "success");
+        if (status === "Completed") {
+          showToast("Escrow released to seller", "success");
+          showToast("Open the deal workspace to rate your partner and leave a review", "success");
+        }
         refreshDeals(true);
       })
       .catch(() => showToast("Failed to update deal", "error"));

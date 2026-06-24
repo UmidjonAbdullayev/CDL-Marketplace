@@ -12,6 +12,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { MessengerPanel } from "../components/chat/MessengerPanel";
 import { AdminAvatar } from "../components/ui/AdminAvatar";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
+import { DealReviewPanel } from "../components/reviews/DealReviewPanel";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { isPlatformStaff } from "../lib/account-capabilities";
@@ -114,6 +115,10 @@ export default function DealWorkspacePage() {
   const isSellerParty = deal?.seller_company_id === myCompanyId;
   const isCarrierParty = isBuyerParty && !isAdmin;
   const isRecruiterParty = isSellerParty && !isAdmin;
+  const dealComplete = Boolean(
+    deal && (deal.status === "Completed" || deal.hiring_stage === "completed")
+  );
+  const showPartyReview = dealComplete && (isCarrierParty || isRecruiterParty) && myCompanyId;
 
   const carrierChatOpen = Boolean(deal?.buyer_signed_at && workspace?.carrierConversationId);
   const recruiterChatOpen = Boolean(deal?.seller_signed_at && workspace?.recruiterConversationId);
@@ -395,6 +400,14 @@ export default function DealWorkspacePage() {
           </button>
         </div>
       </header>
+
+      {showPartyReview ? (
+        <DealReviewPanel
+          dealId={deal.id}
+          myCompanyId={myCompanyId}
+          onSubmitted={() => showToast("Thank you — your review was submitted", "success")}
+        />
+      ) : null}
 
       <div className="deal-party-body">
       {needsSellerSign && isSellerParty ? (

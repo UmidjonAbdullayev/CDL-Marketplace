@@ -1880,6 +1880,28 @@ tbody tr:hover td { background: var(--bg); }
 .review-item { padding: 14px 0; border-bottom: 1px solid var(--gray-100); }
 .review-stars { display: inline-flex; align-items: center; gap: 2px; margin-bottom: var(--s1); }
 
+.deal-review-panel { margin-bottom: 16px; border-color: color-mix(in srgb, var(--warning) 30%, var(--border)); }
+.deal-review-panel-header h3 { display: flex; align-items: center; gap: 8px; }
+.deal-review-panel--submitted { border-color: color-mix(in srgb, var(--success) 30%, var(--border)); }
+.deal-review-panel-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+.deal-review-form-section {
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+.deal-review-form-section:first-of-type { border-top: none; padding-top: 0; }
+.deal-review-section-title { font-size: 14px; margin-bottom: 12px; }
+.deal-review-submitted-grid { display: grid; gap: 16px; margin-bottom: 12px; }
+.star-rating-input { margin-bottom: 12px; }
+.star-rating-input-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+.star-rating-input-stars { display: flex; gap: 4px; }
+.star-rating-input-btn {
+  border: none; background: none; padding: 2px; cursor: pointer; color: var(--border);
+  line-height: 0; transition: color var(--transition), transform var(--transition);
+}
+.star-rating-input-btn.filled { color: var(--warning); }
+.star-rating-input-btn:hover:not(:disabled) { transform: scale(1.08); color: var(--warning); }
+.star-rating-input-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
 /* Pricing */
 .pricing-toggle { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 32px; }
 .pricing-toggle .toggle-track {

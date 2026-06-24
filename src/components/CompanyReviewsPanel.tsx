@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StarRating } from "../lib/badges";
+import { ReviewStars, StarRating } from "../lib/badges";
 import { fmtDate } from "../lib/format";
 import {
   companyTypeLabel,
@@ -69,6 +69,11 @@ export function CompanyReviewsPanel({ companyId, compact = false, onViewAll }: P
               </div>
               {r.title ? <strong>{r.title}</strong> : null}
               <p>{r.body}</p>
+              {r.driver_rating && r.driver_comment ? (
+                <p className="t-caption" style={{ marginTop: 8 }}>
+                  <strong>Driver feedback:</strong> <ReviewStars filled={r.driver_rating} /> — {r.driver_comment}
+                </p>
+              ) : null}
               <span className="t-caption t-secondary">
                 {r.reviewer_name} · {companyTypeLabel(r.reviewer_type)}
                 {r.deal_id ? ` · Deal ${r.deal_id}` : ""}
