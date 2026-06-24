@@ -5,9 +5,11 @@ import { enrichMessagesWithAttachmentUrls, getAttachmentViewUrl, uploadChatAttac
 import { fetchAdminProfile } from "./adminProfiles";
 import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation } from "./marketplace";
 import { assertCanStartHiring, resolveHireLimit } from "./platformLimits";
+import { assertWalletCanCoverDeal, deductWalletBalance } from "./wallet";
 import type { Driver, DriverCard } from "../types";
 
 export { PlatformLimitError } from "./platformLimits";
+export { WalletInsufficientError } from "./wallet";
 
 type ListingRow = {
   id: number;
@@ -280,13 +282,16 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
   await markListingAsHiring(listingId);
 
   const dealAmount = listing.carrier_price ?? listing.price;
+  const buyerCompanyId = getActiveCompanyId();
+  await assertWalletCanCoverDeal(buyerCompanyId, dealAmount);
+
   const id = dealId();
   const now = new Date().toISOString();
 
   const { error: dealErr } = await supabase.from("deals").insert({
     id,
     listing_id: listingId,
-    buyer_company_id: getActiveCompanyId(),
+    buyer_company_id: buyerCompanyId,
     seller_company_id: listing.seller_company_id,
     amount: dealAmount,
     status: "Awaiting Seller Signature",
@@ -302,6 +307,18 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
       .eq("id", listingId)
       .eq("status", "hiring");
     throw dealErr;
+  }
+
+  try {
+    await deductWalletBalance(buyerCompanyId, dealAmount);
+  } catch (err) {
+    await supabase.from("deals").delete().eq("id", id);
+    await supabase
+      .from("driver_listings")
+      .update({ status: "active", updated_at: now })
+      .eq("id", listingId)
+      .eq("status", "hiring");
+    throw err;
   }
 
   await insertDealEvent(id, "contract", "Buyer signed recruiting agreement", `Signed by ${buyerSignerName}`);

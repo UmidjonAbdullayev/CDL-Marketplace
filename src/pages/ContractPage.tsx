@@ -7,14 +7,14 @@ import { invalidateDataViews } from "../lib/dataInvalidation";
 import { BUYER_CONTRACT_CLAUSES } from "../lib/hiring";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
-import { findActiveDealForListing, fetchListingForContract, fetchListingHireAvailability, ListingNotAvailableError, PlatformLimitError, startHiringProcess } from "../services/hiring";
+import { findActiveDealForListing, fetchListingForContract, fetchListingHireAvailability, ListingNotAvailableError, PlatformLimitError, startHiringProcess, WalletInsufficientError } from "../services/hiring";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 import type { DriverCard } from "../types";
 
 export default function ContractPage() {
   const { listingId } = useParams();
   const navigate = useNavigate();
-  const { showToast, sessionUser } = useApp();
+  const { showToast, sessionUser, openDepositModal, refreshWalletBalance } = useApp();
   const canStartHiringProcess = canStartHiring(sessionUser);
   const id = Number(listingId);
 
@@ -95,6 +95,7 @@ export default function ContractPage() {
         dealId = await startHiringProcess(driver.id, signerName.trim());
       }
       invalidateDataViews(["deals", "marketplace", "dashboard", "messages", "my-listings"]);
+      await refreshWalletBalance();
       showToast("Agreement signed. Awaiting seller signature.", "success");
       navigate(`/deals/${dealId}`);
     } catch (e) {
@@ -103,6 +104,9 @@ export default function ContractPage() {
         navigate("/marketplace", { replace: true });
       } else if (e instanceof PlatformLimitError) {
         showToast(e.message, "error");
+      } else if (e instanceof WalletInsufficientError) {
+        showToast(e.message, "error");
+        openDepositModal();
       } else {
         showToast("Failed to start hiring process", "error");
       }

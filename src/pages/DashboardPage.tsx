@@ -91,7 +91,7 @@ function sellerInitials(name: string) {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { showToast, sessionUser } = useApp();
+  const { openDepositModal, sessionUser } = useApp();
   const {
     dashboard,
     dashboardLoading,
@@ -219,7 +219,7 @@ export default function DashboardPage() {
               iconCls="orange"
               icon={<Wallet />}
               label="Deposit Funds"
-              onClick={() => showToast("Deposit flow coming soon", "success")}
+              onClick={openDepositModal}
             />
           </div>
         </div>

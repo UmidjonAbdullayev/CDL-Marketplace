@@ -5,6 +5,7 @@ import { AdminRegistrationReview } from "../components/registration/AdminRegistr
 import { AdminTeamPanel } from "../components/admin/AdminTeamPanel";
 import { CompanyLimitsPanel } from "../components/admin/CompanyLimitsPanel";
 import { ListingApprovalPanel } from "../components/admin/ListingApprovalPanel";
+import { AdminWalletDepositsPanel } from "../components/admin/AdminWalletDepositsPanel";
 import { PageHeader } from "../lib/badges";
 
 export default function AdminPage() {
@@ -40,6 +41,9 @@ export default function AdminPage() {
         <button type="button" className={`tab ${tab === "approvals" ? "active" : ""}`} onClick={() => setTab("approvals")}>Listing Cases</button>
         <button type="button" className={`tab ${tab === "registrations" ? "active" : ""}`} onClick={() => setTab("registrations")}>Registrations</button>
         {isManager ? (
+          <button type="button" className={`tab ${tab === "wallet" ? "active" : ""}`} onClick={() => setTab("wallet")}>Wallet Deposits</button>
+        ) : null}
+        {isManager ? (
           <button type="button" className={`tab ${tab === "limits" ? "active" : ""}`} onClick={() => setTab("limits")}>Trust Limits</button>
         ) : null}
         {isManager ? (
@@ -57,6 +61,11 @@ export default function AdminPage() {
       <div className={`tab-panel ${tab === "registrations" ? "active" : ""}`}>
         <AdminRegistrationReview />
       </div>
+      {isManager ? (
+        <div className={`tab-panel ${tab === "wallet" ? "active" : ""}`}>
+          <AdminWalletDepositsPanel />
+        </div>
+      ) : null}
       {isManager ? (
         <div className={`tab-panel ${tab === "limits" ? "active" : ""}`}>
           <CompanyLimitsPanel />
