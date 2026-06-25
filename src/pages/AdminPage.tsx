@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { useExchangeData } from "../context/ExchangeDataContext";
 import { AdminDealsCommandCenter } from "../components/admin/AdminDealsCommandCenter";
 import { AdminRegistrationReview } from "../components/registration/AdminRegistrationReview";
 import { AdminTeamPanel } from "../components/admin/AdminTeamPanel";
@@ -8,22 +10,63 @@ import { ListingApprovalPanel } from "../components/admin/ListingApprovalPanel";
 import { AdminWalletDepositsPanel } from "../components/admin/AdminWalletDepositsPanel";
 import { PageHeader } from "../lib/badges";
 
+const VALID_TABS = new Set(["deals", "approvals", "registrations", "wallet", "limits", "team", "fees"]);
+
+function TabBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return <span className="admin-tab-badge">{count > 99 ? "99+" : count}</span>;
+}
+
 export default function AdminPage() {
   const { sessionUser } = useApp();
-  const [tab, setTab] = useState("deals");
+  const { badges } = useExchangeData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab = tabFromUrl && VALID_TABS.has(tabFromUrl) ? tabFromUrl : "deals";
+  const [tab, setTab] = useState(initialTab);
   const isManager = sessionUser?.adminRole === "manager";
   const isDealsView = tab === "deals";
+
+  useEffect(() => {
+    if (tabFromUrl && VALID_TABS.has(tabFromUrl) && tabFromUrl !== tab) {
+      setTab(tabFromUrl);
+    }
+  }, [tabFromUrl, tab]);
+
+  const selectTab = useCallback(
+    (next: string) => {
+      setTab(next);
+      if (next === "deals") {
+        setSearchParams({}, { replace: true });
+      } else {
+        setSearchParams({ tab: next }, { replace: true });
+      }
+    },
+    [setSearchParams]
+  );
+
+  const walletBadge = isManager ? badges.adminWalletDeposits : 0;
+  const registrationPaymentBadge = isManager ? badges.adminCarrierPayments : 0;
+
+  const pageDesc = useMemo(() => {
+    if (!isManager) {
+      return "Work your assigned listing cases and registration reviews.";
+    }
+    const parts: string[] = [];
+    if (badges.adminPaymentApprovals > 0) {
+      parts.push(`${badges.adminPaymentApprovals} payment approval(s) waiting`);
+    }
+    return parts.length
+      ? `Review listings, set carrier pricing, assign cases, and manage your admin team. ${parts.join(" · ")}.`
+      : "Review listings, set carrier pricing, assign cases, and manage your admin team.";
+  }, [badges.adminPaymentApprovals, isManager]);
 
   return (
     <div className={`page active admin-page ${isDealsView ? "admin-page--deals" : ""}`}>
       {!isDealsView ? (
         <PageHeader
           title={isManager ? "Platform Manager Console" : "Platform Admin Console"}
-          desc={
-            isManager
-              ? "Review listings, set carrier pricing, assign cases, and manage your admin team."
-              : "Work your assigned listing cases and registration reviews."
-          }
+          desc={pageDesc}
         />
       ) : null}
 
@@ -33,23 +76,34 @@ export default function AdminPage() {
             {isManager ? "Admin Manager" : "Platform Admin"}
           </span>
           <span className="t-secondary">{sessionUser?.email}</span>
+          {isManager && badges.adminPaymentApprovals > 0 ? (
+            <span className="badge badge-yellow admin-payment-pulse">
+              {badges.adminPaymentApprovals} payment approval{badges.adminPaymentApprovals === 1 ? "" : "s"} pending
+            </span>
+          ) : null}
         </div>
       ) : null}
 
       <div className="tabs admin-page-tabs">
-        <button type="button" className={`tab ${tab === "deals" ? "active" : ""}`} onClick={() => setTab("deals")}>Deals Workspace</button>
-        <button type="button" className={`tab ${tab === "approvals" ? "active" : ""}`} onClick={() => setTab("approvals")}>Listing Cases</button>
-        <button type="button" className={`tab ${tab === "registrations" ? "active" : ""}`} onClick={() => setTab("registrations")}>Registrations</button>
+        <button type="button" className={`tab ${tab === "deals" ? "active" : ""}`} onClick={() => selectTab("deals")}>Deals Workspace</button>
+        <button type="button" className={`tab ${tab === "approvals" ? "active" : ""}`} onClick={() => selectTab("approvals")}>Listing Cases</button>
+        <button type="button" className={`tab ${tab === "registrations" ? "active" : ""}`} onClick={() => selectTab("registrations")}>
+          Registrations
+          <TabBadge count={registrationPaymentBadge} />
+        </button>
         {isManager ? (
-          <button type="button" className={`tab ${tab === "wallet" ? "active" : ""}`} onClick={() => setTab("wallet")}>Wallet Deposits</button>
+          <button type="button" className={`tab ${tab === "wallet" ? "active" : ""}`} onClick={() => selectTab("wallet")}>
+            Wallet Deposits
+            <TabBadge count={walletBadge} />
+          </button>
         ) : null}
         {isManager ? (
-          <button type="button" className={`tab ${tab === "limits" ? "active" : ""}`} onClick={() => setTab("limits")}>Trust Limits</button>
+          <button type="button" className={`tab ${tab === "limits" ? "active" : ""}`} onClick={() => selectTab("limits")}>Trust Limits</button>
         ) : null}
         {isManager ? (
-          <button type="button" className={`tab ${tab === "team" ? "active" : ""}`} onClick={() => setTab("team")}>Admin Team</button>
+          <button type="button" className={`tab ${tab === "team" ? "active" : ""}`} onClick={() => selectTab("team")}>Admin Team</button>
         ) : null}
-        <button type="button" className={`tab ${tab === "fees" ? "active" : ""}`} onClick={() => setTab("fees")}>Fee Policy</button>
+        <button type="button" className={`tab ${tab === "fees" ? "active" : ""}`} onClick={() => selectTab("fees")}>Fee Policy</button>
       </div>
 
       <div className={`tab-panel ${tab === "deals" ? "active" : ""}`}>

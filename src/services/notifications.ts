@@ -5,7 +5,7 @@ export type NotificationUrgency = "overdue" | "today" | "soon" | "info";
 
 export type AppNotification = {
   id: string;
-  type: "deal" | "listing" | "message" | "dispute" | "reservation" | "action";
+  type: "deal" | "listing" | "message" | "dispute" | "reservation" | "action" | "payment";
   title: string;
   body: string;
   at: string;

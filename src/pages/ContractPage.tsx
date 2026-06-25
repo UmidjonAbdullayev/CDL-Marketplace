@@ -5,6 +5,7 @@ import { useApp } from "../context/AppContext";
 import { canStartHiring } from "../lib/account-capabilities";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { BUYER_CONTRACT_CLAUSES } from "../lib/hiring";
+import { driverExperienceFields } from "../lib/driver-experience";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { findActiveDealForListing, fetchListingForContract, fetchListingHireAvailability, ListingNotAvailableError, PlatformLimitError, startHiringProcess, WalletInsufficientError } from "../services/hiring";
@@ -63,7 +64,7 @@ export default function ContractPage() {
               first: d.first,
               last: d.last,
               state: d.state,
-              exp: d.exp,
+              ...driverExperienceFields(d.expYears, d.expMonths),
               cdl: d.cdl,
               equip: d.equip,
               avail: d.avail,

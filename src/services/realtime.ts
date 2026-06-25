@@ -26,7 +26,8 @@ const TABLE_TOPICS: Record<string, RealtimeTopic[]> = {
   follow_ups: ["dashboard", "notifications"],
   reservations: ["my-listings", "marketplace", "dashboard"],
   purchases: ["purchased", "deals", "dashboard"],
-  registration_accounts: ["admin", "notifications"]
+  registration_accounts: ["admin", "notifications"],
+  wallet_deposits: ["admin", "notifications"]
 };
 
 const REALTIME_TABLES = Object.keys(TABLE_TOPICS);

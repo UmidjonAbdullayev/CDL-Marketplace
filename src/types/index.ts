@@ -8,7 +8,11 @@ export interface DriverCard {
   first: string;
   last: string;
   state: string;
+  /** @deprecated Use expLabel for display */
   exp: number;
+  expYears: number;
+  expMonths: number;
+  expLabel: string;
   cdl: string;
   equip: string;
   avail: string;
@@ -34,7 +38,11 @@ export interface Driver {
   first: string;
   last: string;
   state: string;
+  /** @deprecated Use expLabel for display */
   exp: number;
+  expYears: number;
+  expMonths: number;
+  expLabel: string;
   cdl: string;
   equip: string;
   endorse: string[];

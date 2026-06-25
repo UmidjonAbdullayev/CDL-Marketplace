@@ -62,6 +62,7 @@ export type SoloRecruiterProfile = {
 
 export type RegistrationAccount = {
   id: string;
+  auth_user_id?: string | null;
   account_type: AccountType;
   status: RegistrationStatus;
   selected_plan: CarrierPlanId | null;

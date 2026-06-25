@@ -55,7 +55,7 @@ export default function DriverDetailPage() {
             </div>
             <div className="info-grid">
               <div className="info-item"><div className="lbl">Full Name</div><div className="val">{fullName(driver)}</div></div>
-              <div className="info-item"><div className="lbl">Experience</div><div className="val">{driver.exp} years</div></div>
+              <div className="info-item"><div className="lbl">Experience</div><div className="val">{driver.expLabel}</div></div>
               <div className="info-item"><div className="lbl">State</div><div className="val">{driver.state}</div></div>
               <div className="info-item"><div className="lbl">CDL Class</div><div className="val">{driver.cdl}</div></div>
               <div className="info-item"><div className="lbl">Equipment</div><div className="val">{driver.equip}</div></div>

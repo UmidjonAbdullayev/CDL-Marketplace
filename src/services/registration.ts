@@ -139,6 +139,18 @@ export async function submitRegistration(
   const status = resolveStatus(payload.accountType, payload.selectedPlan);
   const email = resolveEmail(payload);
 
+  const { authUserId } = await (async () => {
+    if (!supabase) throw new Error("Supabase not configured");
+    const { data, error: authErr } = await supabase.auth.signUp({
+      email,
+      password: payload.password,
+      options: { data: { account_type: payload.accountType } }
+    });
+    if (authErr) throw authErr;
+    if (!data.user?.id) throw new Error("Could not create auth user");
+    return { authUserId: data.user.id };
+  })();
+
   const { data, error } = await supabase
     .from("registration_accounts")
     .insert({
@@ -146,6 +158,7 @@ export async function submitRegistration(
       status,
       selected_plan: payload.accountType === "carrier" ? payload.selectedPlan ?? "free" : null,
       email,
+      auth_user_id: authUserId,
       password_hash,
       profile_data: payload.profile,
       policy_accepted: payload.policyAccepted,
@@ -166,25 +179,35 @@ export async function authenticateRegistration(
   email: string,
   password: string
 ): Promise<RegistrationAccount | null> {
-  if (!supabase) return null;
+  const { signInWithEmailPassword } = await import("./auth");
+  try {
+    return await signInWithEmailPassword(email, password);
+  } catch {
+    return null;
+  }
+}
 
-  const password_hash = await hashPassword(password);
+export async function fetchRegistrationByAuthUserId(authUserId: string): Promise<RegistrationAccount | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("registration_accounts")
+    .select("*")
+    .eq("auth_user_id", authUserId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as RegistrationAccount | null;
+}
+
+export async function fetchRegistrationByEmail(email: string): Promise<RegistrationAccount | null> {
+  if (!supabase) return null;
   const normalized = email.trim().toLowerCase();
   const { data, error } = await supabase
     .from("registration_accounts")
     .select("*")
     .ilike("email", normalized)
-    .eq("password_hash", password_hash)
     .maybeSingle();
-
   if (error) throw error;
-  if (!data) return null;
-
-  const account = data as RegistrationAccount;
-  if (account.suspended || account.status === "rejected") {
-    throw new Error(account.status === "rejected" ? "Account was rejected" : "Account is suspended");
-  }
-  return ensureCompanyForAccount(account);
+  return data as RegistrationAccount | null;
 }
 
 export async function fetchRegistrationById(id: string): Promise<RegistrationAccount | null> {

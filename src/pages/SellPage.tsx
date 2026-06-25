@@ -19,6 +19,8 @@ import {
 import { createListing } from "../services/marketplace";
 import { PlatformLimitError, resolveListingLimit, limitHint } from "../services/platformLimits";
 import { uploadChatAttachment } from "../services/chatAttachments";
+import { DriverExperienceFields } from "../components/listing/DriverExperienceFields";
+import { formatDriverExperience } from "../lib/driver-experience";
 import type { ScoreFlag } from "../types";
 
 export default function SellPage() {
@@ -36,6 +38,7 @@ export default function SellPage() {
   const [cdlClass, setCdlClass] = useState("Class A");
   const [cdlNumber, setCdlNumber] = useState("");
   const [yearsExp, setYearsExp] = useState<number | "">("");
+  const [monthsExp, setMonthsExp] = useState<number | "">("");
   const [scoreFlag, setScoreFlag] = useState<ScoreFlag>("green");
   const [endorsements, setEndorsements] = useState("");
   const [availDate, setAvailDate] = useState("");
@@ -59,6 +62,7 @@ export default function SellPage() {
       phone,
       cdlClass,
       yearsExp,
+      monthsExp,
       availDate,
       equipment,
       routePref,
@@ -67,7 +71,7 @@ export default function SellPage() {
       consent,
       price
     }),
-    [first, last, state, phone, cdlClass, yearsExp, availDate, equipment, routePref, driverType, documents, consent, price]
+    [first, last, state, phone, cdlClass, yearsExp, monthsExp, availDate, equipment, routePref, driverType, documents, consent, price]
   );
 
   useEffect(() => {
@@ -142,6 +146,7 @@ export default function SellPage() {
         cdlClass,
         cdlNumber: cdlNumber.trim() || undefined,
         yearsExp: Number(yearsExp),
+        monthsExp: Number(monthsExp),
         scoreFlag,
         endorsements: endorsements.split(",").map((e) => e.trim()).filter(Boolean),
         availableDate: availDate,
@@ -240,8 +245,15 @@ export default function SellPage() {
             </div>
             <div className="form-group"><label>CDL Number (optional)</label><input value={cdlNumber} onChange={(e) => setCdlNumber(e.target.value)} placeholder="Leave blank if not available yet" /></div>
           </div>
+          <div className="experience-fields-row">
+            <DriverExperienceFields
+              years={yearsExp}
+              months={monthsExp}
+              onYearsChange={setYearsExp}
+              onMonthsChange={setMonthsExp}
+            />
+          </div>
           <div className="form-row">
-            <div className="form-group"><label>Years Experience *</label><input type="number" min={0} value={yearsExp} onChange={(e) => setYearsExp(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Years" /></div>
             <div className="form-group"><label>CDL Score Status</label>
               <select value={scoreFlag} onChange={(e) => setScoreFlag(e.target.value as ScoreFlag)}>
                 <option value="green">Green — Clean Record</option>
@@ -353,6 +365,7 @@ export default function SellPage() {
           <h3 style={{ marginBottom: 16 }}>Step 7: Review & Publish</h3>
           <div style={{ fontSize: 13, lineHeight: 2, background: "var(--gray-50)", padding: 20, borderRadius: 8 }}>
             <strong>Driver:</strong> {first || "—"} {last || ""}<br />
+            <strong>Experience:</strong> {yearsExp !== "" && monthsExp !== "" ? formatDriverExperience(Number(yearsExp), Number(monthsExp)) : "—"}<br />
             <strong>Driver Type:</strong> {driverType}<br />
             <strong>Listing Price:</strong> {price !== "" ? fmtPrice(Number(price)) : "—"}<br />
             <strong>Duration:</strong> {listingDurationDays} day{listingDurationDays === 1 ? "" : "s"}<br />

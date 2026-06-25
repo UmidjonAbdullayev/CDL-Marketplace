@@ -64,10 +64,19 @@ export async function createPlatformAdmin(
   if (!supabase) throw new Error("Supabase not configured");
   const password_hash = await hashPassword(password);
   const normalized = email.trim().toLowerCase();
+
+  const { data: authData, error: authErr } = await supabase.auth.signUp({
+    email: normalized,
+    password,
+    options: { data: { account_type: "carrier", is_platform_admin: true } }
+  });
+  if (authErr) throw authErr;
+
   const { error } = await supabase.from("registration_accounts").insert({
     account_type: "carrier",
     status: "active",
     email: normalized,
+    auth_user_id: authData.user?.id ?? null,
     password_hash,
     selected_plan: "pro_fleet",
     profile_data: {

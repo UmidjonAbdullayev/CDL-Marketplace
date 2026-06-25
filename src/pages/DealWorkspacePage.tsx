@@ -473,7 +473,7 @@ export default function DealWorkspacePage() {
                 </div>
               </div>
               <dl className="deal-driver-details">
-                <div><dt>Experience</dt><dd>{driver.exp} Years</dd></div>
+                <div><dt>Experience</dt><dd>{driver.expLabel}</dd></div>
                 <div><dt>Trailer Type</dt><dd>{driver.equip}</dd></div>
                 <div><dt>CDL Score</dt><dd><span className="deal-score-pill">{scorePct}%</span></dd></div>
                 <div><dt>{recruitmentFee.label}</dt><dd className="deal-fee-value">{recruitmentFee.value}</dd></div>

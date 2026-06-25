@@ -264,7 +264,9 @@ export default function MarketplacePage() {
                       <ScoreBadge score={d.score} />
                     </div>
                     <div className="driver-meta">
-                      <span className="driver-meta-item"><Briefcase className="icon-sm" />{d.exp} yrs</span>
+                      <span className={`driver-meta-item driver-meta-exp${d.expYears === 0 && d.expMonths === 0 ? " driver-meta-exp--training" : ""}`}>
+                        <Briefcase className="icon-sm" />{d.expLabel}
+                      </span>
                       <span className="driver-meta-item"><Truck className="icon-sm" />{d.equip}</span>
                       <span className="driver-meta-item"><Calendar className="icon-sm" />Avail {fmtDate(d.avail)}</span>
                     </div>

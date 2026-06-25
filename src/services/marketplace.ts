@@ -3,6 +3,7 @@ import type { DriverType } from "../lib/driver-types";
 import { supabase } from "../lib/supabase";
 import type { Driver, DriverCard, HotListing, Paginated, ScoreFlag } from "../types";
 import type { AccountType } from "../types/registration";
+import { formatDriverExperience, formatDriverExperienceShort } from "../lib/driver-experience";
 import { computeListingPricing, displayPriceForViewer, type MarketplaceViewer, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { avatarUrlFromProfileData } from "./adminProfiles";
 import { enrichMessagesWithAttachmentUrls, uploadChatAttachment } from "./chatAttachments";
@@ -21,6 +22,7 @@ type ListingCardRow = {
   last_name: string;
   state: string;
   years_exp: number;
+  months_exp?: number;
   cdl_class: string;
   equipment: string;
   available_date: string;
@@ -51,7 +53,7 @@ type ListingDetailRow = ListingCardRow & {
 };
 
 export const LISTING_CARD_SELECT =
-  "id, first_name, last_name, state, years_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, companies (name, rating)";
+  "id, first_name, last_name, state, years_exp, months_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, companies (name, rating)";
 
 export const LISTING_DETAIL_SELECT =
   `${LISTING_CARD_SELECT}, endorsements, phone, email, cdl_number, documents, notes, route_pref, status, views, hot_score, seller_company_id, assigned_admin_id`;
@@ -84,12 +86,17 @@ export function rowToCard(row: ListingCardRowWithHot, viewer: MarketplaceViewer 
   const createdAt = row.created_at ?? new Date().toISOString();
   const { amount, label } = displayPriceForViewer(viewer, row);
   const hideRecruiterPricing = viewer === "carrier";
+  const expYears = row.years_exp ?? 0;
+  const expMonths = row.months_exp ?? 0;
   return {
     id: row.id,
     first: row.first_name,
     last: row.last_name,
     state: row.state,
-    exp: row.years_exp,
+    exp: expYears,
+    expYears,
+    expMonths,
+    expLabel: formatDriverExperience(expYears, expMonths),
     cdl: row.cdl_class,
     equip: row.equipment,
     avail: row.available_date,
@@ -208,7 +215,7 @@ export async function fetchDriverCardsPage(
 
   if (filters.state) q = q.eq("state", filters.state);
   if (filters.cdl) q = q.eq("cdl_class", filters.cdl);
-  if (filters.exp) q = q.gte("years_exp", filters.exp);
+  if (filters.exp) q = q.gte("total_exp_months", filters.exp * 12);
   if (filters.equip) q = q.eq("equipment", filters.equip);
   if (filters.score) q = q.eq("score_flag", filters.score);
   if (filters.priceMin) {
@@ -273,7 +280,7 @@ export async function fetchHotListings(viewer: MarketplaceViewer = "carrier"): P
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q: any = supabase
     .from("driver_listings")
-    .select("id, first_name, last_name, years_exp, state, route_pref, equipment, hot_score, price, carrier_price")
+    .select("id, first_name, last_name, years_exp, months_exp, state, route_pref, equipment, hot_score, price, carrier_price")
     .eq("status", "active")
     .not("hot_score", "is", null)
     .gte("hot_score", 80)
@@ -289,6 +296,7 @@ export async function fetchHotListings(viewer: MarketplaceViewer = "carrier"): P
     first_name: string;
     last_name: string;
     years_exp: number;
+    months_exp?: number;
     state: string;
     route_pref: string;
     equipment: string;
@@ -299,7 +307,7 @@ export async function fetchHotListings(viewer: MarketplaceViewer = "carrier"): P
   return ((data ?? []) as HotRow[]).map((r, i) => ({
     id: r.id,
     name: `${r.first_name} ${r.last_name.charAt(0)}.`,
-    exp: `${r.years_exp} yrs`,
+    exp: formatDriverExperienceShort(r.years_exp, r.months_exp ?? 0),
     state: r.state,
     route: r.route_pref,
     trailer: r.equipment,
@@ -967,6 +975,7 @@ export type NewListingInput = {
   cdlClass: string;
   cdlNumber?: string;
   yearsExp: number;
+  monthsExp: number;
   scoreFlag: ScoreFlag;
   endorsements: string[];
   availableDate: string;
@@ -989,6 +998,7 @@ export type SellerListingDetail = {
   cdl_class: string;
   cdl_number: string | null;
   years_exp: number;
+  months_exp: number;
   score_flag: ScoreFlag;
   endorsements: string[] | null;
   available_date: string;
@@ -1011,6 +1021,7 @@ export type UpdateListingInput = {
   cdlClass: string;
   cdlNumber?: string;
   yearsExp: number;
+  monthsExp: number;
   scoreFlag: ScoreFlag;
   endorsements: string[];
   availableDate: string;
@@ -1028,7 +1039,7 @@ export async function fetchSellerListingDetail(listingId: number): Promise<Selle
   const { data, error } = await supabase
     .from("driver_listings")
     .select(
-      "id, first_name, last_name, state, phone, email, cdl_class, cdl_number, years_exp, score_flag, endorsements, available_date, equipment, route_pref, notes, price, driver_type, listing_duration_days, documents, status"
+      "id, first_name, last_name, state, phone, email, cdl_class, cdl_number, years_exp, months_exp, score_flag, endorsements, available_date, equipment, route_pref, notes, price, driver_type, listing_duration_days, documents, status"
     )
     .eq("id", listingId)
     .eq("seller_company_id", getActiveCompanyId())
@@ -1069,6 +1080,7 @@ export async function updateListing(
     cdl_class: input.cdlClass,
     cdl_number: input.cdlNumber?.trim() || null,
     years_exp: input.yearsExp,
+    months_exp: input.monthsExp,
     score_flag: input.scoreFlag,
     endorsements: input.endorsements,
     available_date: input.availableDate,
@@ -1129,6 +1141,7 @@ export async function createListing(input: NewListingInput): Promise<number> {
     cdl_class: input.cdlClass,
     cdl_number: input.cdlNumber?.trim() || null,
     years_exp: input.yearsExp,
+    months_exp: input.monthsExp,
     score_flag: input.scoreFlag,
     endorsements: input.endorsements,
     available_date: input.availableDate,

@@ -14,7 +14,8 @@ import { CARRIER_PLANS, getWhopCheckoutUrl } from "../lib/carrier-plans";
 import { POLICY_VERSION } from "../lib/policies";
 import { validateEmail, validateProfileStep, type FieldErrors } from "../lib/registration-validation";
 import { sessionFromAccount } from "../lib/session";
-import { authenticateRegistration, submitRegistration } from "../services/registration";
+import { AuthError, sendPasswordResetEmail, signInWithEmailPassword } from "../services/auth";
+import { submitRegistration } from "../services/registration";
 import { fetchCompanyById } from "../services/company";
 import type {
   AccountType,
@@ -96,6 +97,7 @@ export default function RegisterPage() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
 
   const signedOut = Boolean((location.state as { signedOut?: boolean } | null)?.signedOut);
 
@@ -197,18 +199,13 @@ export default function RegisterPage() {
     setSubmitting(true);
     setLoginError("");
     try {
-      const account = await authenticateRegistration(loginEmail, loginPassword);
-      if (!account) {
-        setLoginError("Invalid email or password");
-        showToast("Invalid email or password", "error");
-        return;
-      }
+      const account = await signInWithEmailPassword(loginEmail, loginPassword);
       const user = await sessionForAccount(account);
       signIn(user);
       showToast(`Welcome back, ${user.name}`, "success");
       navigate("/dashboard");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Sign in failed";
+      const msg = err instanceof AuthError ? err.message : err instanceof Error ? err.message : "Sign in failed";
       setLoginError(msg);
       showToast(msg, "error");
     } finally {
@@ -305,6 +302,11 @@ export default function RegisterPage() {
                 />
               </div>
               {loginError ? <p className="field-error" style={{ marginBottom: 12 }}>{loginError}</p> : null}
+              {resetSent ? (
+                <p className="t-caption" style={{ marginBottom: 12, color: "var(--success)" }}>
+                  Password reset email sent. Check your inbox.
+                </p>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-primary btn-block"
@@ -313,6 +315,35 @@ export default function RegisterPage() {
               >
                 {submitting ? <><Loader2 className="icon-sm spin" /> Signing in...</> : <><LogIn className="icon-sm" /> Sign in</>}
               </button>
+              <p className="t-caption t-secondary" style={{ marginTop: 10, textAlign: "center" }}>
+                <button
+                  type="button"
+                  className="policy-link"
+                  disabled={submitting}
+                  onClick={() => void (async () => {
+                    const emailErr = validateEmail(loginEmail);
+                    if (emailErr) {
+                      setLoginError(emailErr);
+                      return;
+                    }
+                    setSubmitting(true);
+                    setLoginError("");
+                    try {
+                      await sendPasswordResetEmail(loginEmail);
+                      setResetSent(true);
+                      showToast("Password reset email sent", "success");
+                    } catch (err) {
+                      const msg = err instanceof AuthError ? err.message : "Could not send reset email";
+                      setLoginError(msg);
+                      showToast(msg, "error");
+                    } finally {
+                      setSubmitting(false);
+                    }
+                  })()}
+                >
+                  Forgot password?
+                </button>
+              </p>
               <p className="t-caption t-secondary" style={{ marginTop: 16, textAlign: "center" }}>
                 New to CDL Exchange?{" "}
                 <button type="button" className="policy-link" onClick={() => setMode("register")}>Create an account</button>

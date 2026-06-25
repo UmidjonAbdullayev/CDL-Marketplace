@@ -17,6 +17,7 @@ import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pr
 import { formatListingPublishError } from "../lib/listing-validation";
 import { fmtPrice } from "../lib/format";
 import { invalidateDataViews } from "../lib/dataInvalidation";
+import { DriverExperienceFields } from "../components/listing/DriverExperienceFields";
 import type { ScoreFlag } from "../types";
 
 function maskDriver(first: string, last: string) {
@@ -73,6 +74,7 @@ export default function MyListingsPage() {
           cdlClass: detail.cdl_class,
           cdlNumber: detail.cdl_number ?? "",
           yearsExp: detail.years_exp,
+          monthsExp: detail.months_exp ?? 0,
           scoreFlag: (detail.score_flag ?? "green") as ScoreFlag,
           endorsements: (detail.endorsements ?? []).join(", "),
           availDate: detail.available_date?.slice(0, 10) ?? "",
@@ -111,10 +113,16 @@ export default function MyListingsPage() {
                 <input defaultValue={form.cdlNumber} onChange={(e) => { form.cdlNumber = e.target.value; }} placeholder="Leave blank if unknown" />
               </div>
             </div>
+            <div className="experience-fields-row">
+              <DriverExperienceFields
+                years={form.yearsExp}
+                months={form.monthsExp}
+                onYearsChange={(v) => { form.yearsExp = v === "" ? 0 : v; }}
+                onMonthsChange={(v) => { form.monthsExp = v === "" ? 0 : v; }}
+                showPreview={false}
+              />
+            </div>
             <div className="form-row">
-              <div className="form-group"><label>Years Experience *</label>
-                <input type="number" min={0} defaultValue={form.yearsExp} onChange={(e) => { form.yearsExp = Number(e.target.value) || 0; }} />
-              </div>
               <div className="form-group"><label>CDL Score Status</label>
                 <select defaultValue={form.scoreFlag} onChange={(e) => { form.scoreFlag = e.target.value as ScoreFlag; }}>
                   <option value="green">Green</option>
@@ -204,6 +212,7 @@ export default function MyListingsPage() {
                   cdlClass: form.cdlClass,
                   cdlNumber: form.cdlNumber.trim() || undefined,
                   yearsExp: form.yearsExp,
+                  monthsExp: form.monthsExp,
                   scoreFlag: form.scoreFlag,
                   endorsements: form.endorsements.split(",").map((e) => e.trim()).filter(Boolean),
                   availableDate: form.availDate,
