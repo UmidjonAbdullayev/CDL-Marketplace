@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePlatformRealtime } from "../../hooks/usePlatformRealtime";
-import { CheckCircle2, CreditCard, Shield, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, CreditCard, Shield, XCircle } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import { CARRIER_PLANS } from "../../lib/carrier-plans";
+import { CARRIER_PLANS, carrierPlanLabel } from "../../lib/carrier-plans";
 import { fmtDate } from "../../lib/format";
 import {
   approveRegistration,
@@ -17,6 +17,8 @@ import {
 } from "../../services/registration";
 import type { CarrierPlanId, RegistrationAccount } from "../../types/registration";
 
+type QueueFilter = "all" | "payment" | "review";
+
 function statusBadge(status: string) {
   const map: Record<string, string> = {
     active_preview: "badge-blue",
@@ -29,12 +31,33 @@ function statusBadge(status: string) {
   return map[status] ?? "badge-gray";
 }
 
+function rowClass(account: RegistrationAccount, selectedId?: string): string {
+  const classes = [selectedId === account.id ? "row-selected" : ""];
+  if (account.status === "pending_payment") classes.push("row-pending-payment");
+  else if (account.status === "pending_review") classes.push("row-pending-review");
+  return classes.filter(Boolean).join(" ");
+}
+
+function sortAccounts(accounts: RegistrationAccount[]): RegistrationAccount[] {
+  const rank = (status: string) => {
+    if (status === "pending_payment") return 0;
+    if (status === "pending_review") return 1;
+    return 2;
+  };
+  return [...accounts].sort((a, b) => {
+    const r = rank(a.status) - rank(b.status);
+    if (r !== 0) return r;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+}
+
 export function AdminRegistrationReview() {
   const { showToast } = useApp();
   const [accounts, setAccounts] = useState<RegistrationAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<RegistrationAccount | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
 
   const load = async () => {
     setLoading(true);
@@ -67,42 +90,83 @@ export function AdminRegistrationReview() {
     }
   };
 
-  const pending = accounts.filter((a) => ["pending_review", "pending_payment"].includes(a.status));
+  const pendingPayment = accounts.filter((a) => a.status === "pending_payment");
+  const pendingReview = accounts.filter((a) => a.status === "pending_review");
+
+  const visibleAccounts = useMemo(() => {
+    const filtered =
+      queueFilter === "payment"
+        ? accounts.filter((a) => a.status === "pending_payment")
+        : queueFilter === "review"
+          ? accounts.filter((a) => a.status === "pending_review")
+          : accounts;
+    return sortAccounts(filtered);
+  }, [accounts, queueFilter]);
 
   return (
     <div className="admin-reg-review">
       <div className="stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginBottom: 16 }}>
-        <div className="stat-card"><div className="label">Pending Review</div><div className="value">{accounts.filter((a) => a.status === "pending_review").length}</div></div>
-        <div className="stat-card"><div className="label">Pending Payment</div><div className="value">{accounts.filter((a) => a.status === "pending_payment").length}</div></div>
+        <div className="stat-card"><div className="label">Pending Review</div><div className="value">{pendingReview.length}</div></div>
+        <div className={`stat-card ${pendingPayment.length ? "stat-card-alert" : ""}`}>
+          <div className="label">Pending Payment</div>
+          <div className="value">{pendingPayment.length}</div>
+        </div>
         <div className="stat-card"><div className="label">Active / Preview</div><div className="value">{accounts.filter((a) => ["active", "active_preview"].includes(a.status)).length}</div></div>
         <div className="stat-card"><div className="label">Policy Logs</div><div className="value">{accounts.filter((a) => a.policy_accepted).length}</div></div>
+      </div>
+
+      <div className="admin-queue-filters">
+        <button type="button" className={`btn btn-sm ${queueFilter === "all" ? "btn-primary" : "btn-secondary"}`} onClick={() => setQueueFilter("all")}>
+          All ({accounts.length})
+        </button>
+        <button type="button" className={`btn btn-sm ${queueFilter === "payment" ? "btn-primary" : "btn-secondary"}`} onClick={() => setQueueFilter("payment")}>
+          Payment approval
+          {pendingPayment.length ? <span className="admin-tab-badge">{pendingPayment.length}</span> : null}
+        </button>
+        <button type="button" className={`btn btn-sm ${queueFilter === "review" ? "btn-primary" : "btn-secondary"}`} onClick={() => setQueueFilter("review")}>
+          Profile review
+          {pendingReview.length ? <span className="admin-tab-badge">{pendingReview.length}</span> : null}
+        </button>
       </div>
 
       <div className="admin-reg-layout">
         <div className="card">
           <div className="card-header"><h3>Registration Queue</h3></div>
           <div className="table-wrap">
-            <table>
+            <table className="admin-reg-table">
               <thead>
                 <tr><th>Account</th><th>Type</th><th>Status</th><th>Plan</th><th>Policy</th><th>Submitted</th></tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr><td colSpan={6} className="t-secondary">Loading...</td></tr>
-                ) : accounts.length === 0 ? (
-                  <tr><td colSpan={6} className="t-secondary">No registrations yet</td></tr>
+                ) : visibleAccounts.length === 0 ? (
+                  <tr><td colSpan={6} className="t-secondary">No registrations in this view</td></tr>
                 ) : (
-                  accounts.map((a) => (
+                  visibleAccounts.map((a) => (
                     <tr
                       key={a.id}
-                      className={selected?.id === a.id ? "row-selected" : ""}
+                      className={rowClass(a, selected?.id)}
                       style={{ cursor: "pointer" }}
                       onClick={() => setSelected(a)}
                     >
-                      <td>{displayAccountName(a)}</td>
+                      <td>
+                        <div className="admin-reg-account-cell">
+                          {a.status === "pending_payment" ? (
+                            <CreditCard className="icon-sm admin-reg-payment-icon" aria-hidden />
+                          ) : a.status === "pending_review" ? (
+                            <AlertCircle className="icon-sm admin-reg-review-icon" aria-hidden />
+                          ) : null}
+                          <span>{displayAccountName(a)}</span>
+                        </div>
+                      </td>
                       <td className="t-secondary">{a.account_type.replace("_", " ")}</td>
-                      <td><span className={`badge ${statusBadge(a.status)}`}>{a.status}</span></td>
-                      <td>{a.selected_plan ?? "—"}</td>
+                      <td>
+                        <span className={`badge ${statusBadge(a.status)}`}>
+                          {a.status === "pending_payment" ? "Payment approval" : a.status.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td>{a.selected_plan ? carrierPlanLabel(a.selected_plan) : "—"}</td>
                       <td>{a.policy_accepted ? <CheckCircle2 className="icon-sm" style={{ color: "var(--success)" }} /> : <XCircle className="icon-sm" style={{ color: "var(--danger)" }} />}</td>
                       <td className="t-caption">{fmtDate(a.created_at)}</td>
                     </tr>
@@ -116,11 +180,24 @@ export function AdminRegistrationReview() {
         <div className="card admin-reg-detail">
           {selected ? (
             <div className="card-body">
+              {selected.status === "pending_payment" ? (
+                <div className="admin-payment-approval-banner">
+                  <CreditCard className="icon-md" />
+                  <div>
+                    <strong>Whop payment awaiting your approval</strong>
+                    <p className="t-caption t-secondary">
+                      Carrier selected {selected.selected_plan ? carrierPlanLabel(selected.selected_plan) : "a paid plan"}.
+                      Verify payment on Whop, then confirm below to activate their plan.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
               <h3 className="t-section" style={{ marginBottom: 12 }}>{displayAccountName(selected)}</h3>
               <div className="t-secondary" style={{ fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
                 <div><strong>Email:</strong> {selected.email}</div>
                 <div><strong>Status:</strong> {selected.status}</div>
-                {selected.selected_plan ? <div><strong>Plan:</strong> {selected.selected_plan}</div> : null}
+                {selected.selected_plan ? <div><strong>Plan:</strong> {carrierPlanLabel(selected.selected_plan)}</div> : null}
                 <div><strong>Policy:</strong> {selected.policy_version} · {selected.policy_accepted_at ? fmtDate(selected.policy_accepted_at) : "—"}</div>
                 {selected.accepted_ip_address ? <div><strong>IP:</strong> {selected.accepted_ip_address}</div> : null}
                 {selected.rejection_reason ? <div style={{ color: "var(--danger)" }}><strong>Rejection:</strong> {selected.rejection_reason}</div> : null}
@@ -180,8 +257,10 @@ export function AdminRegistrationReview() {
         </div>
       </div>
 
-      {pending.length > 0 ? (
-        <p className="t-caption t-secondary" style={{ marginTop: 12 }}>{pending.length} account(s) awaiting review or payment.</p>
+      {pendingPayment.length > 0 ? (
+        <p className="t-caption admin-payment-queue-note">
+          <CreditCard className="icon-sm" /> {pendingPayment.length} carrier plan payment{pendingPayment.length === 1 ? "" : "s"} awaiting Whop confirmation.
+        </p>
       ) : null}
     </div>
   );

@@ -17,6 +17,7 @@ export type ListingFieldSnapshot = {
   phone: string;
   cdlClass: string;
   yearsExp: number | "";
+  monthsExp: number | "";
   availDate: string;
   equipment: string;
   routePref: string;
@@ -41,6 +42,7 @@ const COLUMN_LABELS: Record<string, string> = {
   cdl_class: "CDL class",
   cdl_number: "CDL number",
   years_exp: "Years of experience",
+  months_exp: "Months of experience",
   available_date: "Available date",
   equipment: "Equipment preference",
   route_pref: "Route preference",
@@ -62,6 +64,7 @@ export function listingStepErrors(stepNum: number, fields: ListingFieldSnapshot)
   if (stepNum === 2) {
     if (!fields.cdlClass) errs.push("CDL class is required");
     if (fields.yearsExp === "") errs.push("Years of experience is required");
+    if (fields.monthsExp === "") errs.push("Months of experience is required");
   }
   if (stepNum === 3) {
     if (!fields.availDate) errs.push("Availability date is required");

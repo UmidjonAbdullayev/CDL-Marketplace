@@ -27,7 +27,7 @@ type NavItem = {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
-  badgeKey?: "disputes" | "messages" | "ongoingDeals";
+  badgeKey?: "disputes" | "messages" | "ongoingDeals" | "adminPaymentApprovals";
   sellerOnly?: boolean;
   buyerOnly?: boolean;
   adminOnly?: boolean;
@@ -59,7 +59,7 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
       { to: "/profile", label: "Company Profile", icon: Building2, buyerOnly: true },
       { to: "/pricing", label: "Pricing / Billing", icon: CreditCard },
       { to: "/compliance", label: "Compliance Center", icon: ShieldCheck },
-      { to: "/admin", label: "Admin Panel", icon: UserCog, adminOnly: true },
+      { to: "/admin", label: "Admin Panel", icon: UserCog, adminOnly: true, badgeKey: "adminPaymentApprovals" },
       { to: "/settings", label: "Settings", icon: Settings }
     ]
   }

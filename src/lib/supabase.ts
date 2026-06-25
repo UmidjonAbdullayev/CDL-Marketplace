@@ -23,6 +23,11 @@ function attachSessionHeaders(init?: RequestInit): RequestInit {
 
 export const supabase = url && anonKey
   ? createClient(url, anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      },
       global: {
         fetch: (input, init) => fetch(input, attachSessionHeaders(init))
       }

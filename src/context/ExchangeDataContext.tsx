@@ -12,7 +12,7 @@ import { useLocation } from "react-router-dom";
 import { useApp } from "./AppContext";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { registerDataInvalidation } from "../lib/dataInvalidation";
-import { marketplaceViewerForUser } from "../lib/account-capabilities";
+import { marketplaceViewerForUser, isPlatformManager } from "../lib/account-capabilities";
 import { postedWithinSince } from "../lib/driver-types";
 import { fmtPrice } from "../lib/format";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -56,6 +56,7 @@ import {
   type AppNotification,
   type UpcomingAction
 } from "../services/notifications";
+import { fetchManagerPaymentNotifications, fetchManagerPaymentPendingCounts } from "../services/adminPayments";
 import { fetchOngoingDealsUnreadCount } from "../services/dealViews";
 import { subscribePlatformRealtime, type RealtimeTopic } from "../services/realtime";
 import type { Driver, DriverCard, HotListing, ScoreFlag } from "../types";
@@ -156,7 +157,14 @@ function refreshMode(loadedAt: number): "skip" | "background" | "initial" {
 
 interface ExchangeDataValue {
   appLoading: boolean;
-  badges: { disputes: number; messages: number; ongoingDeals: number };
+  badges: {
+    disputes: number;
+    messages: number;
+    ongoingDeals: number;
+    adminWalletDeposits: number;
+    adminCarrierPayments: number;
+    adminPaymentApprovals: number;
+  };
   notifications: AppNotification[];
   dismissAllNotifications: () => void;
   dismissNotification: (id: string) => void;
@@ -296,7 +304,14 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   );
 
   const [appLoading, setAppLoading] = useState(isSupabaseConfigured);
-  const [badges, setBadges] = useState({ disputes: 0, messages: 0, ongoingDeals: 0 });
+  const [badges, setBadges] = useState({
+    disputes: 0,
+    messages: 0,
+    ongoingDeals: 0,
+    adminWalletDeposits: 0,
+    adminCarrierPayments: 0,
+    adminPaymentApprovals: 0
+  });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [dismissedNotifIds, setDismissedNotifIds] = useState(readDismissedNotifications);
   const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriod>("7d");
@@ -414,8 +429,37 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
         fetchUnreadMessageCount(),
         fetchOngoingDealsUnreadCount(sessionUser)
       ]);
-      setNotifications(items);
-      setBadges((b) => ({ ...b, messages: unread, ongoingDeals: ongoingUnread }));
+
+      let merged = items;
+      let adminWalletDeposits = 0;
+      let adminCarrierPayments = 0;
+      let adminPaymentApprovals = 0;
+
+      if (isPlatformManager(sessionUser)) {
+        const [paymentItems, counts] = await Promise.all([
+          fetchManagerPaymentNotifications(),
+          fetchManagerPaymentPendingCounts()
+        ]);
+        adminWalletDeposits = counts.walletDeposits;
+        adminCarrierPayments = counts.carrierPlanPayments;
+        adminPaymentApprovals = counts.total;
+        const order: Record<string, number> = { overdue: 0, today: 1, soon: 2, info: 3 };
+        merged = [...paymentItems, ...items].sort((a, b) => {
+          const u = order[a.urgency] - order[b.urgency];
+          if (u !== 0) return u;
+          return new Date(b.at).getTime() - new Date(a.at).getTime();
+        });
+      }
+
+      setNotifications(merged);
+      setBadges((b) => ({
+        ...b,
+        messages: unread,
+        ongoingDeals: ongoingUnread,
+        adminWalletDeposits,
+        adminCarrierPayments,
+        adminPaymentApprovals
+      }));
     } catch (err) {
       console.error("Failed to load notifications", err);
     }

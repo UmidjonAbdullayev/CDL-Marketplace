@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { fmtPrice, maskName } from "../lib/format";
+import { driverExperienceFields } from "../lib/driver-experience";
 import { setActiveCompanyId } from "../lib/activeCompany";
 import {
   initSession,
@@ -10,9 +11,10 @@ import {
   sessionFromAccount,
   type SessionUser
 } from "../lib/session";
-import { isSupabaseConfigured } from "../lib/supabase";
+import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { fetchCompanyById } from "../services/company";
 import { buildSessionAccount, fetchRegistrationById } from "../services/registration";
+import { restoreSessionFromAuth, signOutAuth } from "../services/auth";
 import { DisputeForm } from "../components/DisputeForm";
 import { WalletDepositPanel } from "../components/billing/WalletDepositPanel";
 import {
@@ -133,6 +135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    void signOutAuth();
     clearSession();
     setActiveCompanyId(null);
     setSessionUser(null);
@@ -141,6 +144,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSearchQuery("");
     setModal({ open: false, title: "", body: null, footer: null });
     setDataReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const account = await restoreSessionFromAuth();
+        if (cancelled) return;
+        if (account) {
+          const company = account.company_id ? await fetchCompanyById(account.company_id) : null;
+          const user = sessionFromAccount(account, company);
+          writeSession(user);
+          setActiveCompanyId(user.companyId || null);
+          setSessionUser(user);
+          setDataReady(false);
+        }
+      } catch (err) {
+        console.error("Failed to restore auth session", err);
+      }
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        clearSession();
+        setActiveCompanyId(null);
+        setSessionUser(null);
+        return;
+      }
+      if (!session) return;
+      void restoreSessionFromAuth().then(async (account) => {
+        if (!account) return;
+        const company = account.company_id ? await fetchCompanyById(account.company_id) : null;
+        const user = sessionFromAccount(account, company);
+        writeSession(user);
+        setActiveCompanyId(user.companyId || null);
+        setSessionUser(user);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -229,7 +278,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       first: d.first,
       last: d.last,
       state: d.state,
-      exp: d.exp,
+      ...driverExperienceFields(d.expYears, d.expMonths),
       cdl: d.cdl,
       equip: d.equip,
       avail: d.avail,

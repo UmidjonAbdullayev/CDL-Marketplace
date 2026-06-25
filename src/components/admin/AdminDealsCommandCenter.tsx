@@ -517,7 +517,7 @@ export function AdminDealsCommandCenter() {
                     <div className="card-header"><h3>Deal Summary</h3></div>
                     <div className="card-body admin-summary-grid">
                       <div><span className="lbl">Equipment Type</span><strong>{driver.equip}</strong></div>
-                      <div><span className="lbl">Experience Required</span><strong>{driver.exp} years</strong></div>
+                      <div><span className="lbl">Experience</span><strong>{driver.expLabel}</strong></div>
                       <div><span className="lbl">Driver Location</span><strong>{driver.state}</strong></div>
                       <div><span className="lbl">CDL Class</span><strong>{driver.cdl}</strong></div>
                       <div><span className="lbl">Recruiter list price</span><strong>{selectedDeal.list_price != null ? fmtPrice(selectedDeal.list_price) : "—"}</strong></div>
@@ -551,7 +551,7 @@ export function AdminDealsCommandCenter() {
                       <div className="admin-driver-avatar">{driver.first[0]}{driver.last[0]}</div>
                       <div>
                         <strong>{fullName(driver)}</strong>
-                        <p className="t-secondary">{driver.cdl} · {driver.exp} yrs · {driver.state}</p>
+                        <p className="t-secondary">{driver.cdl} · {driver.expLabel} · {driver.state}</p>
                       </div>
                       <span className={`badge ${stageBadgeClass(selectedDeal.hiring_stage)}`}>{stageLabel(selectedDeal.hiring_stage)}</span>
                     </div>

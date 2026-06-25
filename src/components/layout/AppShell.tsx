@@ -9,18 +9,26 @@ import { PaymentProcessingBanner } from "../billing/PaymentProcessingBanner";
 import { WalletDepositPendingBanner } from "../billing/WalletDepositPendingBanner";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
-import { canActAsCarrier, isSellerNav } from "../../lib/account-capabilities";
+import { canActAsCarrier, isPlatformManager, isSellerNav } from "../../lib/account-capabilities";
+import { fmtPrice } from "../../lib/format";
+import { carrierPlanLabel } from "../../lib/carrier-plans";
+import type { CarrierPlanId } from "../../types/registration";
 import {
   isOrderSoundUnlocked,
   useRecruiterOrderAlert
 } from "../../hooks/useRecruiterOrderAlert";
+import {
+  useManagerPaymentAlert,
+  type ManagerPaymentAlertPayload
+} from "../../hooks/useManagerPaymentAlert";
 import { shouldLaunchMarketplaceSearch } from "../../lib/search-navigation";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { debouncedSearch, isSignedIn, setSearchQuery, sessionUser, showToast } = useApp();
-  const { appLoading } = useExchangeData();
+  const { appLoading, refreshNotifications } = useExchangeData();
   const isRecruiter = isSellerNav(sessionUser);
+  const isManager = isPlatformManager(sessionUser);
 
   const onNewOrder = useCallback(
     (dealId: string) => {
@@ -31,7 +39,25 @@ export function AppShell() {
     [showToast]
   );
 
+  const onNewPaymentApproval = useCallback(
+    (payload: ManagerPaymentAlertPayload) => {
+      void refreshNotifications();
+      if (!isOrderSoundUnlocked()) {
+        showToast("New payment awaiting approval — click anywhere on the page to enable sounds", "success");
+        return;
+      }
+      if (payload.kind === "wallet_deposit") {
+        showToast(`Wallet deposit ${fmtPrice(payload.amount)} needs approval`, "success");
+      } else {
+        const plan = payload.plan ? carrierPlanLabel(payload.plan as CarrierPlanId) : "paid plan";
+        showToast(`Carrier ${plan} payment needs approval`, "success");
+      }
+    },
+    [refreshNotifications, showToast]
+  );
+
   useRecruiterOrderAlert(sessionUser, isRecruiter ? onNewOrder : undefined);
+  useManagerPaymentAlert(sessionUser, isManager ? onNewPaymentApproval : undefined);
   const navigate = useNavigate();
   const location = useLocation();
 

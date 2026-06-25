@@ -983,6 +983,14 @@ tbody tr:hover td { background: var(--bg); }
 .driver-meta { display: flex; flex-wrap: wrap; gap: var(--s4); margin: var(--s4) 0; }
 .driver-meta-item { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-caption); color: var(--text-secondary); font-weight: 500; }
 .driver-meta-item i { width: var(--icon-sm); height: var(--icon-sm); color: var(--text-secondary); }
+.driver-meta-exp { padding: 2px 8px; border-radius: 999px; background: var(--gray-100); color: var(--text-primary); }
+.driver-meta-exp--training { background: var(--purple-bg); color: var(--purple); }
+.experience-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); width: 100%; }
+.experience-fields-row .experience-fields { grid-column: 1 / -1; }
+.experience-fields-preview { grid-column: 1 / -1; margin: 0; color: var(--text-secondary); }
+@media (max-width: 640px) {
+  .experience-fields { grid-template-columns: 1fr; }
+}
 .driver-price-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--border); }
 .driver-price { font-size: 18px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.02em; }
 .driver-seller { font-size: var(--fs-caption); color: var(--text-secondary); text-align: right; }
@@ -2347,6 +2355,41 @@ tbody tr:hover td { background: var(--bg); }
 .carrier-plan-checkout-hint { margin: 4px 0 8px; }
 
 .admin-reg-layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+.admin-queue-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+.admin-tab-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 9px; font-size: 10px; font-weight: 700; line-height: 1;
+  background: var(--primary); color: #fff;
+}
+.tab .admin-tab-badge { vertical-align: middle; }
+.admin-page-tabs .tab { display: inline-flex; align-items: center; gap: 2px; }
+.admin-payment-pulse { animation: admin-payment-pulse 2s ease-in-out infinite; }
+@keyframes admin-payment-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 35%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent); }
+}
+.stat-card-alert { border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); background: color-mix(in srgb, var(--warning) 6%, var(--surface)); }
+tr.row-pending-payment td {
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  border-top: 1px solid color-mix(in srgb, var(--warning) 22%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 22%, var(--border));
+}
+tr.row-pending-payment.row-selected td { background: color-mix(in srgb, var(--warning) 18%, var(--primary-light)); }
+tr.row-pending-review td { background: color-mix(in srgb, var(--purple) 6%, var(--surface)); }
+.admin-reg-account-cell { display: flex; align-items: center; gap: 8px; }
+.admin-reg-payment-icon { color: var(--warning); flex-shrink: 0; }
+.admin-reg-review-icon { color: var(--purple); flex-shrink: 0; }
+.admin-payment-approval-banner {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 14px; margin-bottom: 16px; border-radius: var(--radius-btn);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+.admin-payment-approval-banner .icon-md { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
+.admin-payment-queue-note { display: flex; align-items: center; gap: 6px; margin-top: 12px; color: var(--warning); font-weight: 600; }
+.notif-item.type-payment { border-left: 3px solid var(--warning); }
+.notif-item.type-payment .notif-item-title::before { content: "💳 "; }
 .admin-reg-detail { min-height: 360px; }
 .admin-reg-profile-json {
   font-size: 11px; background: var(--bg); border: 1px solid var(--border);

@@ -49,7 +49,7 @@ export function NotificationsPanel({
             <button
               key={n.id}
               type="button"
-              className={`notif-item urgency-${n.urgency}`}
+              className={`notif-item urgency-${n.urgency}${n.type === "payment" ? " type-payment" : ""}`}
               onClick={() => {
                 onDismiss(n.id);
                 onClose();

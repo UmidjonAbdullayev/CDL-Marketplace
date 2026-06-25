@@ -193,7 +193,7 @@ export function AdminWalletDepositsPanel() {
                 <tr><td colSpan={6} className="t-secondary">No deposits in this view</td></tr>
               ) : (
                 rows.map((row) => (
-                  <tr key={row.id}>
+                  <tr key={row.id} className={row.status === "pending" ? "row-pending-payment" : ""}>
                     <td>{row.company_name}</td>
                     <td>{fmtPrice(row.amount)}</td>
                     <td><span className={`badge ${statusBadge(row.status)}`}>{row.status}</span></td>

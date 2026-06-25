@@ -106,3 +106,8 @@ export function playOrderNotificationSound(dealId: string): void {
 export function preloadOrderNotificationSound(): void {
   getAudio().load();
 }
+
+/** Alias for wallet deposits, carrier plan payments, and other manager approval alerts. */
+export function playApprovalNotificationSound(eventId: string): void {
+  playOrderNotificationSound(eventId);
+}
