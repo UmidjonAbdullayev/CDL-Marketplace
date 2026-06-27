@@ -12,6 +12,8 @@ export type CompanyRow = {
   created_at: string;
   cdl_score_verified: boolean;
   cdl_score_email: string | null;
+  cdl_score_user_id: string | null;
+  cdl_score_search_credits: number;
   max_active_hires: number | null;
   max_active_listings: number | null;
 };

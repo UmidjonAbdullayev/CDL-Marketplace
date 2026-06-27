@@ -14,8 +14,9 @@ import { CARRIER_PLANS, getWhopCheckoutUrl } from "../lib/carrier-plans";
 import { POLICY_VERSION } from "../lib/policies";
 import { validateEmail, validateProfileStep, type FieldErrors } from "../lib/registration-validation";
 import { sessionFromAccount } from "../lib/session";
-import { AuthError, sendPasswordResetEmail, signInWithEmailPassword } from "../services/auth";
+import { AuthError, formatRegistrationError, sendPasswordResetEmail, signInWithEmailPassword } from "../services/auth";
 import { submitRegistration } from "../services/registration";
+import { linkRegistrationToCdlScore } from "../services/cdlScoreLink";
 import { fetchCompanyById } from "../services/company";
 import type {
   AccountType,
@@ -165,6 +166,9 @@ export default function RegisterPage() {
         { userAgent: navigator.userAgent }
       );
       signIn(await sessionForAccount(result.account));
+      void linkRegistrationToCdlScore(result.account, password).catch(() => {
+        showToast("Account created — CDL Score sync will retry on next sign-in", "error");
+      });
       const checkoutUrl =
         accountType === "carrier" && selectedPlan !== "free" ? getWhopCheckoutUrl(selectedPlan) : null;
       if (checkoutUrl) {
@@ -178,9 +182,10 @@ export default function RegisterPage() {
           checkoutUrl
         }
       });
-    } catch {
-      setSubmitError("Registration failed. Please try again.");
-      showToast("Registration failed", "error");
+    } catch (err) {
+      const message = formatRegistrationError(err);
+      setSubmitError(message);
+      showToast(message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -350,7 +355,7 @@ export default function RegisterPage() {
               </p>
             </div>
           ) : (
-            <>
+            <div className="register-form-panel">
               <div className="register-card-head">
                 <h2 className="t-page">Create your account</h2>
                 <p className="t-secondary">Join CDL Exchange as a carrier, agency, or solo recruiter</p>
@@ -500,7 +505,7 @@ export default function RegisterPage() {
                   </button>
                 )}
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>

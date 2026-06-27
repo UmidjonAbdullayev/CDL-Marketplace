@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Pagination } from "../components/ui/Pagination";
+import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { DRIVER_TYPES, POSTED_WITHIN_OPTIONS } from "../lib/driver-types";
 import { PageHeader, ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { driverInitials, fmtDate, fmtPostedAt, fmtRecruitingFee, maskName } from "../lib/format";
+import { isCarrierMarketplaceVerified, isOwnRecruiterListing, shouldShowMarketplacePrice } from "../lib/marketplace-display";
 import { US_STATES } from "../lib/us-states";
 import { DEFAULT_PAGE_SIZE } from "../services/marketplace";
 
@@ -44,6 +46,7 @@ function activeFilterCount(filters: ReturnType<typeof useExchangeData>["marketpl
 
 export default function MarketplacePage() {
   const navigate = useNavigate();
+  const { sessionUser } = useApp();
   const {
     marketplaceFilters: filters,
     setMarketplaceFilters: setFilters,
@@ -65,9 +68,20 @@ export default function MarketplacePage() {
   const filterCount = activeFilterCount(filters);
   const showLoader = (!hasLoaded && loading) || ((loading || refreshing) && drivers.length === 0);
   const showEmpty = hasLoaded && !loading && !refreshing && drivers.length === 0;
+  const carrierNeedsVerification =
+    sessionUser?.accountType === "carrier" && !isCarrierMarketplaceVerified(sessionUser);
 
   return (
     <div className="page active marketplace-page">
+      {carrierNeedsVerification ? (
+        <div className="marketplace-verify-banner card">
+          <strong>Verification required to view recruiting fees</strong>
+          <p className="t-caption t-secondary">
+            You can browse driver listings now. Once an admin verifies your MC number and company profile,
+            pricing and hiring will unlock.
+          </p>
+        </div>
+      ) : null}
       <PageHeader
         title={hotOnly ? "Trending Listings" : "Marketplace"}
         desc={
@@ -239,10 +253,13 @@ export default function MarketplacePage() {
           ) : (
             <div className={`driver-grid driver-grid--3 ${refreshing ? "is-loading" : ""}`} id="driverGrid">
               {drivers.map((d) => {
+                const ownListing = isOwnRecruiterListing(sessionUser, d);
+                const showPrice = shouldShowMarketplacePrice(sessionUser, d);
                 const cardClass = [
                   "driver-card",
                   d.featured ? "driver-card--featured" : "",
-                  d.isTrending || trendingListingIds.has(d.id) ? "driver-card--trending" : ""
+                  d.isTrending || trendingListingIds.has(d.id) ? "driver-card--trending" : "",
+                  ownListing ? "driver-card--own-listing" : ""
                 ].filter(Boolean).join(" ");
 
                 const cardContent = (
@@ -272,8 +289,21 @@ export default function MarketplacePage() {
                     </div>
                     <div className="driver-price-row">
                       <div>
-                        <div className="driver-price">{fmtRecruitingFee(d.price)}</div>
-                        <div className="driver-fee-label t-caption t-secondary">{d.priceLabel ?? "Platform recruiting fee"}</div>
+                        {showPrice ? (
+                          <>
+                            <div className="driver-price">{fmtRecruitingFee(d.price)}</div>
+                            <div className="driver-fee-label t-caption t-secondary">{d.priceLabel ?? "Platform recruiting fee"}</div>
+                          </>
+                        ) : (
+                          <div className="driver-price-blurred">
+                            <span className="driver-price-blurred-value">$•••</span>
+                            <span className="t-caption t-secondary">
+                              {sessionUser?.accountType === "carrier"
+                                ? "Verify account to view fee"
+                                : "Recruiter pricing hidden"}
+                            </span>
+                          </div>
+                        )}
                         {d.isTrending || trendingListingIds.has(d.id) ? (
                           <span className="badge badge-red trending-badge"><Flame className="icon-sm" /> Trending</span>
                         ) : null}
@@ -294,6 +324,7 @@ export default function MarketplacePage() {
                     onClick={() => navigate(`/driver/${d.id}`)}
                     onKeyDown={(e) => e.key === "Enter" && navigate(`/driver/${d.id}`)}
                   >
+                    {ownListing ? <div className="driver-card-own-label">Your listing</div> : null}
                     {d.featured ? <div className="driver-card-featured-label">featured</div> : null}
                     {cardContent}
                   </div>

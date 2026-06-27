@@ -21,7 +21,19 @@ function mapAuthError(message: string): string {
     return "Please confirm your email before signing in. Check your inbox or use Forgot password.";
   }
   if (lower.includes("user already registered")) return "An account with this email already exists. Sign in instead.";
+  if (lower.includes("rate limit") || lower.includes("over_email_send")) {
+    return "Too many signup attempts. Wait a few minutes and try again.";
+  }
+  if (lower.includes("email_address_invalid") || lower.includes("is invalid")) {
+    return "That email address was rejected. Use a valid company or personal email.";
+  }
   return message;
+}
+
+export function formatRegistrationError(error: unknown): string {
+  if (error instanceof AuthError) return error.message;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return "Registration failed. Please try again.";
 }
 
 export async function signInWithEmailPassword(

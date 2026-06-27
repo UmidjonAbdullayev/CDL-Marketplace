@@ -25,6 +25,7 @@ export interface DriverCard {
   carrierPrice?: number | null;
   seller: string;
   sellerRating: number;
+  sellerCompanyId?: string;
   hotScore?: number;
   isTrending?: boolean;
   driverType: DriverType;

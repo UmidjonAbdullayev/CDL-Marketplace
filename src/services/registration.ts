@@ -6,6 +6,8 @@ import type {
   RegistrationPayload,
   RegistrationStatus
 } from "../types/registration";
+import { AuthError, signUpWithEmailPassword } from "./auth";
+import { syncCdlScorePlanCredits } from "./cdlScore";
 
 async function hashPassword(password: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
@@ -102,6 +104,44 @@ function resolveEmail(payload: RegistrationPayload): string {
   return raw.trim().toLowerCase();
 }
 
+async function createAuthUserForRegistration(
+  email: string,
+  password: string,
+  accountType: AccountType
+): Promise<string | null> {
+  if (!supabase) throw new Error("Supabase not configured");
+
+  const existing = await fetchRegistrationByEmail(email);
+  if (existing) {
+    throw new AuthError("An account with this email already exists. Sign in instead.");
+  }
+
+  try {
+    const { authUserId } = await signUpWithEmailPassword(email, password, { account_type: accountType });
+    return authUserId;
+  } catch (err) {
+    if (!(err instanceof AuthError)) throw err;
+
+    const msg = err.message.toLowerCase();
+    if (msg.includes("already exists")) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error && data.user?.id) {
+        const linked = await fetchRegistrationByAuthUserId(data.user.id);
+        if (linked) throw err;
+        return data.user.id;
+      }
+      throw err;
+    }
+
+    if (msg.includes("rate limit") || msg.includes("too many signup")) {
+      console.warn("[registration] Auth signup rate limited — continuing with legacy credentials");
+      return null;
+    }
+
+    throw err;
+  }
+}
+
 export async function submitRegistration(
   payload: RegistrationPayload,
   audit: { ip?: string; userAgent?: string }
@@ -139,17 +179,7 @@ export async function submitRegistration(
   const status = resolveStatus(payload.accountType, payload.selectedPlan);
   const email = resolveEmail(payload);
 
-  const { authUserId } = await (async () => {
-    if (!supabase) throw new Error("Supabase not configured");
-    const { data, error: authErr } = await supabase.auth.signUp({
-      email,
-      password: payload.password,
-      options: { data: { account_type: payload.accountType } }
-    });
-    if (authErr) throw authErr;
-    if (!data.user?.id) throw new Error("Could not create auth user");
-    return { authUserId: data.user.id };
-  })();
+  const authUserId = await createAuthUserForRegistration(email, payload.password, payload.accountType);
 
   const { data, error } = await supabase
     .from("registration_accounts")
@@ -170,7 +200,15 @@ export async function submitRegistration(
     .select("*")
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (authUserId && supabase) {
+      await supabase.auth.signOut();
+    }
+    if (error.code === "23505") {
+      throw new AuthError("An account with this email already exists. Sign in instead.");
+    }
+    throw error;
+  }
   const account = await ensureCompanyForAccount(data as RegistrationAccount);
   return { id: account.id, status: account.status as RegistrationStatus, account };
 }
@@ -292,6 +330,10 @@ export async function confirmCarrierPayment(id: string): Promise<void> {
     .update({ status: "active", updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) throw error;
+
+  if (data.selected_plan) {
+    await syncCdlScorePlanCredits(data.selected_plan as CarrierPlanId, id);
+  }
 }
 
 export type CarrierBillingContext = {

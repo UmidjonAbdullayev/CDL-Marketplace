@@ -35,6 +35,7 @@ type ListingCardRow = {
   driver_type: DriverType;
   featured: boolean;
   created_at: string;
+  seller_company_id?: string;
   companies: { name: string; rating: number } | { name: string; rating: number }[] | null;
 };
 
@@ -53,7 +54,7 @@ type ListingDetailRow = ListingCardRow & {
 };
 
 export const LISTING_CARD_SELECT =
-  "id, first_name, last_name, state, years_exp, months_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, companies (name, rating)";
+  "id, first_name, last_name, state, years_exp, months_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, seller_company_id, companies (name, rating)";
 
 export const LISTING_DETAIL_SELECT =
   `${LISTING_CARD_SELECT}, endorsements, phone, email, cdl_number, documents, notes, route_pref, status, views, hot_score, seller_company_id, assigned_admin_id`;
@@ -109,6 +110,7 @@ export function rowToCard(row: ListingCardRowWithHot, viewer: MarketplaceViewer 
     carrierPrice: hideRecruiterPricing ? row.carrier_price ?? null : undefined,
     seller: company?.name ?? "Verified Seller",
     sellerRating: Number(company?.rating ?? 4),
+    sellerCompanyId: row.seller_company_id,
     hotScore,
     isTrending: hotScore >= 80,
     driverType: row.driver_type ?? "Owner Operator",

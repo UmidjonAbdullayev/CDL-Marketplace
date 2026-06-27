@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { canStartHiring } from "../lib/account-capabilities";
+import { isCarrierMarketplaceVerified, shouldShowDetailPrice } from "../lib/marketplace-display";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
+import { CdlScoreDriverPanel } from "../components/cdl-score/CdlScoreDriverPanel";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchListingHireAvailability } from "../services/hiring";
 
@@ -18,7 +20,8 @@ export default function DriverDetailPage() {
 
   const listingId = Number(id);
   const driver = useMemo(() => (listingId ? driverDetails[listingId] ?? null : null), [driverDetails, listingId]);
-  const canStartHiringProcess = canStartHiring(sessionUser);
+  const canStartHiringProcess = canStartHiring(sessionUser) && isCarrierMarketplaceVerified(sessionUser);
+  const showPrice = driver ? shouldShowDetailPrice(sessionUser, driver.sellerCompanyId) : false;
   const [hireAvailable, setHireAvailable] = useState(true);
   const [hireBlockedReason, setHireBlockedReason] = useState("");
 
@@ -72,14 +75,12 @@ export default function DriverDetailPage() {
               </span>
             </div>
             <div style={{ marginTop: "var(--s5)" }}>
-              <h4 className="t-card" style={{ marginBottom: "var(--s3)" }}>CDL Score Summary</h4>
-              <div className="score-summary">
-                <div className="score-ring"><ScoreBadge score={driver.score} /></div>
-                <div className="score-details t-secondary">
-                  <p>Full CDL Score report available during the hiring process. Includes MVR, PSP, and safety event history.</p>
-                  <button className="btn btn-ghost btn-sm" onClick={() => navigate("/compliance")}>Learn about CDL Score</button>
-                </div>
-              </div>
+              <CdlScoreDriverPanel
+                driverFirst={driver.first}
+                driverLast={driver.last}
+                listingScore={driver.score}
+                creditsAvailable={sessionUser?.cdlScoreCredits ?? 0}
+              />
             </div>
           </div>
         </div>
@@ -87,9 +88,15 @@ export default function DriverDetailPage() {
           <div className="card">
             <div className="card-body">
               <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase", marginBottom: 4 }}>{driver.priceLabel ?? "Platform Recruiting Fee"}</div>
-              <div className="detail-price">{fmtRecruitingFee(driver.price)}</div>
+              {showPrice ? (
+                <div className="detail-price">{fmtRecruitingFee(driver.price)}</div>
+              ) : (
+                <div className="detail-price detail-price--blurred">$•••</div>
+              )}
               <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
-                {canStartHiringProcess
+                {sessionUser?.accountType === "carrier" && !isCarrierMarketplaceVerified(sessionUser)
+                  ? "Verify your MC number and company profile to view fees and start hiring."
+                  : canStartHiring(sessionUser)
                   ? "Fee for recruiting coordination through CDL Exchange"
                   : "Your listed price for this driver lead"}
               </p>
