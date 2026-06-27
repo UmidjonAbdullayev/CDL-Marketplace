@@ -75,17 +75,28 @@ body {
   height: 100%; overflow: hidden; overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
 }
+html.register-flow,
+body.register-flow {
+  height: 100%;
+  overflow: hidden;
+}
+html.register-flow #root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 /* Unified scrollbars */
-.scroll-y, .content, .sidebar-nav, .conv-list, .chat-messages, .messenger-panel-messages, .dash-card-trio-scroll, .modal-body, .table-wrap {
+.scroll-y, .content, .sidebar-nav, .conv-list, .chat-messages, .messenger-panel-messages, .dash-card-trio-scroll, .modal-body, .table-wrap, .register-page, .register-main, .register-brand, .register-success-page {
   scrollbar-width: thin;
   scrollbar-color: var(--gray-300) transparent;
 }
 .scroll-y::-webkit-scrollbar, .content::-webkit-scrollbar, .sidebar-nav::-webkit-scrollbar,
-.conv-list::-webkit-scrollbar, .chat-messages::-webkit-scrollbar, .messenger-panel-messages::-webkit-scrollbar, .dash-card-trio-scroll::-webkit-scrollbar, .modal-body::-webkit-scrollbar {
+.conv-list::-webkit-scrollbar, .chat-messages::-webkit-scrollbar, .messenger-panel-messages::-webkit-scrollbar, .dash-card-trio-scroll::-webkit-scrollbar, .modal-body::-webkit-scrollbar, .register-page::-webkit-scrollbar, .register-main::-webkit-scrollbar, .register-brand::-webkit-scrollbar, .register-success-page::-webkit-scrollbar {
   width: 6px; height: 6px;
 }
 .scroll-y::-webkit-scrollbar-thumb, .content::-webkit-scrollbar-thumb, .sidebar-nav::-webkit-scrollbar-thumb,
-.conv-list::-webkit-scrollbar-thumb, .chat-messages::-webkit-scrollbar-thumb, .messenger-panel-messages::-webkit-scrollbar-thumb, .dash-card-trio-scroll::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
+.conv-list::-webkit-scrollbar-thumb, .chat-messages::-webkit-scrollbar-thumb, .messenger-panel-messages::-webkit-scrollbar-thumb, .dash-card-trio-scroll::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb, .register-page::-webkit-scrollbar-thumb, .register-main::-webkit-scrollbar-thumb, .register-brand::-webkit-scrollbar-thumb, .register-success-page::-webkit-scrollbar-thumb {
   background: var(--gray-300); border-radius: 3px;
 }
 .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); }
@@ -2324,12 +2335,16 @@ tbody tr:hover td { background: var(--bg); }
 .register-page {
   display: grid;
   grid-template-columns: minmax(280px, 38%) minmax(0, 1fr);
-  min-height: 100dvh;
-  min-height: 100vh;
+  flex: 1;
+  min-height: 0;
+  height: 100dvh;
+  height: 100vh;
+  max-height: 100dvh;
+  max-height: 100vh;
   background: var(--bg);
   width: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 .register-brand {
   background: var(--gradient-cta);
@@ -2337,13 +2352,15 @@ tbody tr:hover td { background: var(--bg); }
   padding: 48px 40px;
   display: flex;
   align-items: center;
-  min-height: 100dvh;
-  min-height: 100vh;
-  position: sticky;
-  top: 0;
-  align-self: start;
+  align-self: stretch;
+  min-height: 0;
+  height: 100%;
   max-height: 100dvh;
+  max-height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .register-brand-inner { max-width: 420px; width: 100%; }
 .register-mobile-brand { display: none; align-items: center; gap: 12px; margin-bottom: 20px; }
@@ -2365,17 +2382,22 @@ tbody tr:hover td { background: var(--bg); }
   border: 1px solid #BFDBFE; border-radius: var(--radius-btn); font-size: 12px; color: var(--primary);
 }
 .register-main {
-  min-height: 100dvh;
-  min-height: 100vh;
+  min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
+  max-height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior-y: contain;
   padding: 32px clamp(16px, 4vw, 40px);
+  padding-bottom: max(32px, env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: flex-start;
   justify-content: center;
   min-width: 0;
   width: 100%;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: 24px;
 }
 .register-form-panel,
 .login-form-panel {
@@ -2417,7 +2439,7 @@ tbody tr:hover td { background: var(--bg); }
   min-width: 0;
   padding: clamp(18px, 3vw, 28px);
   box-shadow: var(--shadow-md);
-  overflow: hidden;
+  overflow: visible;
 }
 .register-card section {
   min-width: 0;
@@ -2506,8 +2528,22 @@ tbody tr:hover td { background: var(--bg); }
 .spin { animation: spin 0.75s linear infinite; }
 
 .register-success-page {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: var(--bg); padding: 24px;
+  flex: 1;
+  min-height: 0;
+  height: 100dvh;
+  height: 100vh;
+  max-height: 100dvh;
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
 }
 .register-success-card { max-width: 520px; width: 100%; padding: 40px 32px; text-align: center; }
 .register-success-icon { color: var(--success); margin-bottom: 16px; }
@@ -3107,7 +3143,6 @@ tr.row-selected td { background: var(--primary-light); }
 @media (max-width: 1280px) {
   .register-page {
     grid-template-columns: 1fr;
-    min-height: auto;
   }
   .register-brand {
     display: none;
@@ -3116,8 +3151,8 @@ tr.row-selected td { background: var(--primary-light); }
     display: flex;
   }
   .register-main {
-    min-height: auto;
     padding: 24px clamp(16px, 4vw, 32px);
+    padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
   }
   .account-type-grid {
     grid-template-columns: 1fr;
@@ -3129,17 +3164,30 @@ tr.row-selected td { background: var(--primary-light); }
 
 @media (max-width: 1100px) {
   .register-page {
-    grid-template-columns: 1fr;
-    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
   }
   .register-brand {
-    position: relative;
+    display: flex;
+    flex-shrink: 0;
     min-height: auto;
+    height: auto;
+    max-height: none;
+    overflow: visible;
     padding: 32px 24px;
+    position: relative;
   }
   .register-main {
-    min-height: auto;
+    flex: 1 0 auto;
+    height: auto;
+    max-height: none;
+    overflow: visible;
     padding: 24px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
   }
   .account-type-grid { grid-template-columns: 1fr; }
   .carrier-plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -3158,7 +3206,7 @@ tr.row-selected td { background: var(--primary-light); }
 @media (max-width: 640px) {
   .register-brand { display: none; }
   .register-mobile-brand { display: flex; }
-  .register-main { padding: 12px; }
+  .register-main { padding: 12px; padding-bottom: max(20px, env(safe-area-inset-bottom, 0px)); }
   .register-card { padding: 16px 14px; border-radius: var(--radius-btn); }
   .register-card-head .t-page { font-size: 20px; }
   .reg-form-grid { grid-template-columns: 1fr; }
@@ -3217,7 +3265,7 @@ tr.row-selected td { background: var(--primary-light); }
   .carrier-plan-card { padding: 16px; }
   .policy-modal-overlay { padding: 12px; align-items: flex-end; }
   .policy-modal { max-height: 92dvh; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-  .register-success-page { padding: 16px; align-items: flex-start; padding-top: 32px; }
+  .register-success-page { padding: 16px; align-items: flex-start; padding-top: 32px; padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
   .register-success-card { padding: 28px 20px; }
 }
 .upload-zone i { width: var(--icon-xl); height: var(--icon-xl); color: var(--text-secondary); margin-bottom: var(--s3); }

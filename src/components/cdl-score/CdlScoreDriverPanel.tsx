@@ -10,8 +10,9 @@ import {
   TrendingUp
 } from "lucide-react";
 import { ScoreBadge } from "../../lib/badges";
-import { CDL_SCORE_APP_URL, searchDriverOnCdlScore, type CdlScoreDriverResult } from "../../services/cdlScore";
+import { CDL_SCORE_APP_URL } from "../../lib/cdl-score-urls";
 import { useApp } from "../../context/AppContext";
+import { searchDriverOnCdlScore, type CdlScoreDriverResult } from "../../services/cdlScore";
 
 type Props = {
   driverFirst: string;
