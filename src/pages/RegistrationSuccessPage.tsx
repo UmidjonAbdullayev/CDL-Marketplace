@@ -2,6 +2,7 @@ import { CheckCircle2, CreditCard, ExternalLink, Eye, Truck } from "lucide-react
 import { useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { useRegisterFlowScroll } from "../hooks/useRegisterFlowScroll";
 import { carrierPlanLabel, getWhopCheckoutUrl } from "../lib/carrier-plans";
 import type { AccountType, CarrierPlanId, RegistrationStatus } from "../types/registration";
 
@@ -17,6 +18,7 @@ export default function RegistrationSuccessPage() {
   const location = useLocation();
   const { isSignedIn } = useApp();
   const state = location.state as SuccessState | null;
+  useRegisterFlowScroll();
 
   useEffect(() => {
     if (!state && !isSignedIn) {

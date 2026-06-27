@@ -94,4 +94,4 @@ export async function fetchLocalCdlScoreCredits(): Promise<number> {
   return Number(data?.cdl_score_search_credits ?? 0);
 }
 
-export const CDL_SCORE_APP_URL = import.meta.env.VITE_CDL_SCORE_APP_URL ?? "https://cdlscore.com";
+export { CDL_SCORE_APP_URL, CDL_SCORE_REGISTER_URL } from "../lib/cdl-score-urls";

@@ -2,6 +2,7 @@ import { CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { accountTypeLabel, canAccessAdminPanel } from "../lib/account-capabilities";
+import { CDL_SCORE_APP_URL } from "../lib/cdl-score-urls";
 import { PageHeader } from "../lib/badges";
 
 export default function SettingsPage() {
@@ -40,7 +41,7 @@ export default function SettingsPage() {
           <hr style={{ border: "none", borderTop: "1px solid var(--gray-200)", margin: "16px 0" }} />
           <a
             className="btn btn-ghost btn-sm"
-            href="https://cdl-score-crm.vercel.app"
+            href={CDL_SCORE_APP_URL}
             target="_blank"
             rel="noopener noreferrer"
           >

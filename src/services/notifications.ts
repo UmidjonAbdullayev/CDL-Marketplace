@@ -349,4 +349,4 @@ export async function fetchCdlScoreVerified(): Promise<boolean> {
   return Boolean(data?.cdl_score_verified);
 }
 
-export const CDL_SCORE_REGISTER_URL = "https://cdlscore.com/register";
+export { CDL_SCORE_APP_URL, CDL_SCORE_REGISTER_URL } from "../lib/cdl-score-urls";

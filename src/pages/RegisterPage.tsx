@@ -16,6 +16,7 @@ import { validateEmail, validateProfileStep, type FieldErrors } from "../lib/reg
 import { sessionFromAccount } from "../lib/session";
 import { AuthError, formatRegistrationError, sendPasswordResetEmail, signInWithEmailPassword } from "../services/auth";
 import { submitRegistration } from "../services/registration";
+import { useRegisterFlowScroll } from "../hooks/useRegisterFlowScroll";
 import { linkRegistrationToCdlScore } from "../services/cdlScoreLink";
 import { fetchCompanyById } from "../services/company";
 import type {
@@ -81,6 +82,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast, signIn, isSignedIn } = useApp();
+  useRegisterFlowScroll();
 
   const [mode, setMode] = useState<PageMode>("register");
   const [step, setStep] = useState(1);
