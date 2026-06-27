@@ -10,6 +10,9 @@ export type SessionUser = {
   accountType: AccountType;
   status: RegistrationStatus;
   profileVerified: boolean;
+  mcVerified: boolean;
+  cdlScoreLinked: boolean;
+  cdlScoreCredits: number;
   companyId: string;
   isAdmin: boolean;
   adminRole: AdminRole;
@@ -55,7 +58,11 @@ function isPlatformStaffPlan(account: RegistrationAccount): boolean {
 
 export function sessionFromAccount(
   account: RegistrationAccount,
-  company?: { wallet_balance?: number | null } | null
+  company?: {
+    wallet_balance?: number | null;
+    cdl_score_verified?: boolean | null;
+    cdl_score_search_credits?: number | null;
+  } | null
 ): SessionUser {
   const name = accountDisplayName(account);
   const plan = account.selected_plan
@@ -71,6 +78,9 @@ export function sessionFromAccount(
     accountType: account.account_type,
     status: account.status,
     profileVerified: Boolean(account.profile_verified),
+    mcVerified: Boolean(account.mc_verified),
+    cdlScoreLinked: Boolean(company?.cdl_score_verified),
+    cdlScoreCredits: Number(company?.cdl_score_search_credits ?? 0),
     selectedPlan: account.account_type === "carrier" ? account.selected_plan ?? "free" : null,
     companyId: account.company_id ?? "",
     isAdmin: Boolean(account.is_admin),

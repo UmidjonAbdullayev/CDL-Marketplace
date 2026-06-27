@@ -8,6 +8,8 @@ export type CarrierPlan = {
   popular?: boolean;
   checkoutUrl?: string;
   activeHireLimit: number | null;
+  /** Monthly CDL Score driver search credits included with plan */
+  searchCredits: number | null;
   features: { text: string; locked?: boolean }[];
 };
 
@@ -27,6 +29,11 @@ export function activeHireLimitForPlan(plan: CarrierPlanId | null | undefined): 
   return p?.activeHireLimit ?? 1;
 }
 
+export function searchCreditsForPlan(plan: CarrierPlanId | null | undefined): number {
+  const p = CARRIER_PLANS.find((row) => row.id === (plan ?? "free"));
+  return p?.searchCredits ?? 0;
+}
+
 export const CARRIER_PLANS: CarrierPlan[] = [
   {
     id: "free",
@@ -34,6 +41,7 @@ export const CARRIER_PLANS: CarrierPlan[] = [
     price: 0,
     priceLabel: "$0/mo",
     activeHireLimit: 1,
+    searchCredits: 0,
     features: [
       { text: "Browse marketplace preview" },
       { text: "View limited driver cards" },
@@ -50,6 +58,7 @@ export const CARRIER_PLANS: CarrierPlan[] = [
     priceLabel: "$99/mo",
     checkoutUrl: WHOP_CHECKOUT_URLS.starter,
     activeHireLimit: 5,
+    searchCredits: 5,
     features: [
       { text: "Browse full marketplace" },
       { text: "Up to 5 active hires" },
@@ -66,6 +75,7 @@ export const CARRIER_PLANS: CarrierPlan[] = [
     popular: true,
     checkoutUrl: WHOP_CHECKOUT_URLS.growth,
     activeHireLimit: 15,
+    searchCredits: 15,
     features: [
       { text: "Up to 15 active hires" },
       { text: "Priority search placement" },
@@ -82,6 +92,7 @@ export const CARRIER_PLANS: CarrierPlan[] = [
     priceLabel: "$499/mo",
     checkoutUrl: WHOP_CHECKOUT_URLS.pro_fleet,
     activeHireLimit: null,
+    searchCredits: 50,
     features: [
       { text: "Unlimited active hires" },
       { text: "Dedicated rep & bulk export" },
