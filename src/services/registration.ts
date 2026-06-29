@@ -312,6 +312,14 @@ export async function updateRegistrationPlan(id: string, plan: CarrierPlanId): P
   if (error) throw error;
 }
 
+/** Manager / admin: grant or re-sync plan search credits for a carrier registration. */
+export async function grantCarrierCdlScoreCredits(id: string, plan: CarrierPlanId): Promise<void> {
+  const sync = await syncCdlScorePlanCredits(plan, id);
+  if (!sync.success) {
+    throw new Error(sync.error ?? "CDL Score credits could not be granted");
+  }
+}
+
 /** Manager confirms Whop payment received — activates paid carrier plan. */
 export async function confirmCarrierPayment(id: string): Promise<void> {
   if (!supabase) return;
@@ -332,7 +340,10 @@ export async function confirmCarrierPayment(id: string): Promise<void> {
   if (error) throw error;
 
   if (data.selected_plan) {
-    await syncCdlScorePlanCredits(data.selected_plan as CarrierPlanId, id);
+    const sync = await syncCdlScorePlanCredits(data.selected_plan as CarrierPlanId, id);
+    if (!sync.success) {
+      throw new Error(sync.error ?? "CDL Score credits could not be granted. Redeploy provision-cdl-score or check CDL Score secrets.");
+    }
   }
 }
 

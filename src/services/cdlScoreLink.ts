@@ -64,6 +64,11 @@ export async function ensureCdlScoreAccountOnLogin(
   }
 
   const { companyName, mcNumber, contactName, email } = profileFields(account.account_type, account.profile_data);
+  const plan = account.selected_plan ?? "free";
+  const dueCredits =
+    account.status === "active" && searchCreditsForPlan(plan) > 0
+      ? searchCreditsForPlan(plan)
+      : 0;
 
   return provisionCdlScoreAccount({
     email,
@@ -71,7 +76,8 @@ export async function ensureCdlScoreAccountOnLogin(
     companyName,
     mcNumber,
     contactName,
-    plan: account.selected_plan ?? "free",
-    searchCredits: 0
+    plan,
+    searchCredits: 0,
+    grantPlanCreditsIfDue: dueCredits > 0
   });
 }

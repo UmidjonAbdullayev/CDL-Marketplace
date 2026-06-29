@@ -28,7 +28,45 @@ export type ProvisionCdlScorePayload = {
   contactName?: string;
   plan?: CarrierPlanId | null;
   searchCredits?: number;
+  grantPlanCreditsIfDue?: boolean;
 };
+
+function formatInvokeError(error: unknown): string {
+  if (error instanceof Error) {
+    const msg = error.message;
+    if (msg.includes("Failed to send a request to the Edge Function")) {
+      return "Could not reach the CDL Score edge function. Redeploy provision-cdl-score on Supabase and check your network connection.";
+    }
+    return msg;
+  }
+  return "Edge function request failed";
+}
+
+async function parseInvokeResult(data: unknown, error: unknown): Promise<{
+  success: boolean;
+  credits?: number;
+  error?: string;
+}> {
+  if (error) {
+    const ctx = error as { context?: Response };
+    if (ctx.context && typeof ctx.context.json === "function") {
+      try {
+        const body = (await ctx.context.json()) as { error?: string; message?: string };
+        const detail = body?.error ?? body?.message;
+        if (detail) return { success: false, error: detail };
+      } catch {
+        /* ignore parse errors */
+      }
+    }
+    return { success: false, error: formatInvokeError(error) };
+  }
+
+  const result = data as { success?: boolean; credits?: number; error?: string };
+  if (!result?.success) {
+    return { success: false, error: result?.error ?? "CDL Score provisioning failed" };
+  }
+  return { success: true, credits: result.credits };
+}
 
 export async function provisionCdlScoreAccount(payload: ProvisionCdlScorePayload): Promise<{
   success: boolean;
@@ -46,30 +84,26 @@ export async function provisionCdlScoreAccount(payload: ProvisionCdlScorePayload
       companyName: payload.companyName,
       mcNumber: payload.mcNumber?.trim() || "PENDING",
       contactName: payload.contactName?.trim() || payload.companyName,
-      searchCredits
+      searchCredits,
+      grantPlanCreditsIfDue: Boolean(payload.grantPlanCreditsIfDue)
     }
   });
 
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  const result = data as { success?: boolean; credits?: number; error?: string };
-  if (!result?.success) {
-    return { success: false, error: result?.error ?? "CDL Score provisioning failed" };
-  }
-
-  return { success: true, credits: result.credits ?? searchCredits };
+  const parsed = await parseInvokeResult(data, error);
+  if (!parsed.success) return parsed;
+  return { success: true, credits: parsed.credits ?? searchCredits };
 }
 
-export async function syncCdlScorePlanCredits(plan: CarrierPlanId, targetRegistrationId?: string): Promise<boolean> {
-  if (!supabase) return false;
+export async function syncCdlScorePlanCredits(
+  plan: CarrierPlanId,
+  targetRegistrationId?: string
+): Promise<{ success: boolean; credits?: number; error?: string }> {
+  if (!supabase) return { success: false, error: "Supabase not configured" };
   const searchCredits = searchCreditsForPlan(plan);
   const { data, error } = await supabase.functions.invoke("provision-cdl-score", {
     body: { syncCreditsOnly: true, searchCredits, plan, targetRegistrationId }
   });
-  if (error) return false;
-  return Boolean((data as { success?: boolean })?.success);
+  return parseInvokeResult(data, error);
 }
 
 export async function refreshCdlScoreCreditsFromServer(): Promise<number> {
