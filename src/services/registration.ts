@@ -1,3 +1,4 @@
+import { searchCreditsForPlan } from "../lib/carrier-plans";
 import { supabase } from "../lib/supabase";
 import type {
   AccountType,
@@ -313,11 +314,19 @@ export async function updateRegistrationPlan(id: string, plan: CarrierPlanId): P
 }
 
 /** Manager / admin: grant or re-sync plan search credits for a carrier registration. */
-export async function grantCarrierCdlScoreCredits(id: string, plan: CarrierPlanId): Promise<void> {
+export async function grantCarrierCdlScoreCredits(id: string, plan: CarrierPlanId): Promise<number> {
   const sync = await syncCdlScorePlanCredits(plan, id);
   if (!sync.success) {
     throw new Error(sync.error ?? "CDL Score credits could not be granted");
   }
+  const expected = searchCreditsForPlan(plan);
+  const actual = Number(sync.credits ?? 0);
+  if (expected > 0 && actual < expected) {
+    throw new Error(
+      `CDL Score returned ${actual} credits but ${expected} were expected for this plan. Try sync again in a moment.`
+    );
+  }
+  return actual;
 }
 
 /** Manager confirms Whop payment received — activates paid carrier plan. */
