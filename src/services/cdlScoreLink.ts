@@ -53,3 +53,25 @@ export async function linkRegistrationToCdlScore(
     searchCredits: grantCredits ? searchCreditsForPlan(plan as CarrierPlanId) : 0
   });
 }
+
+/** Re-sync CDL Score auth password + company link on Exchange sign-in. */
+export async function ensureCdlScoreAccountOnLogin(
+  account: RegistrationAccount,
+  password: string
+): Promise<{ success: boolean; credits?: number; error?: string }> {
+  if (account.account_type !== "carrier") {
+    return { success: true };
+  }
+
+  const { companyName, mcNumber, contactName, email } = profileFields(account.account_type, account.profile_data);
+
+  return provisionCdlScoreAccount({
+    email,
+    password,
+    companyName,
+    mcNumber,
+    contactName,
+    plan: account.selected_plan ?? "free",
+    searchCredits: 0
+  });
+}

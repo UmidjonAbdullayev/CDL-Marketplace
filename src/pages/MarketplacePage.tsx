@@ -17,7 +17,7 @@ import { useExchangeData } from "../context/ExchangeDataContext";
 import { DRIVER_TYPES, POSTED_WITHIN_OPTIONS } from "../lib/driver-types";
 import { PageHeader, ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { driverInitials, fmtDate, fmtPostedAt, fmtRecruitingFee, maskName } from "../lib/format";
-import { isCarrierMarketplaceVerified, isOwnRecruiterListing, shouldShowMarketplacePrice } from "../lib/marketplace-display";
+import { isCarrierMarketplaceVerified, isOwnRecruiterListing, isRecruiterAccount, marketplacePriceDisplay } from "../lib/marketplace-display";
 import { US_STATES } from "../lib/us-states";
 import { DEFAULT_PAGE_SIZE } from "../services/marketplace";
 
@@ -30,14 +30,17 @@ function driverTypeBadgeClass(type: string): string {
   }
 }
 
-function activeFilterCount(filters: ReturnType<typeof useExchangeData>["marketplaceFilters"]): number {
+function activeFilterCount(
+  filters: ReturnType<typeof useExchangeData>["marketplaceFilters"],
+  sessionUser: ReturnType<typeof useApp>["sessionUser"]
+): number {
   let n = 0;
   if (filters.state) n++;
   if (filters.cdl) n++;
   if (filters.exp > 0) n++;
   if (filters.equip) n++;
   if (filters.score) n++;
-  if (filters.priceMin > 0 || filters.priceMax < 99999) n++;
+  if (!isRecruiterAccount(sessionUser) && (filters.priceMin > 0 || filters.priceMax < 99999)) n++;
   if (filters.verified) n++;
   if (filters.driverType) n++;
   if (filters.postedWithin) n++;
@@ -65,7 +68,7 @@ export default function MarketplacePage() {
   } = useExchangeData();
 
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const filterCount = activeFilterCount(filters);
+  const filterCount = activeFilterCount(filters, sessionUser);
   const showLoader = (!hasLoaded && loading) || ((loading || refreshing) && drivers.length === 0);
   const showEmpty = hasLoaded && !loading && !refreshing && drivers.length === 0;
   const carrierNeedsVerification =
@@ -189,6 +192,7 @@ export default function MarketplacePage() {
                   <option value="red">Red</option>
                 </select>
               </div>
+              {isRecruiterAccount(sessionUser) ? null : (
               <div className="filter-group filter-group--price">
                 <label>Price Range</label>
                 <div className="filter-price-row">
@@ -207,6 +211,7 @@ export default function MarketplacePage() {
                   />
                 </div>
               </div>
+              )}
               <label className="filter-check filter-check--inline">
                 <input
                   type="checkbox"
@@ -254,7 +259,7 @@ export default function MarketplacePage() {
             <div className={`driver-grid driver-grid--3 ${refreshing ? "is-loading" : ""}`} id="driverGrid">
               {drivers.map((d) => {
                 const ownListing = isOwnRecruiterListing(sessionUser, d);
-                const showPrice = shouldShowMarketplacePrice(sessionUser, d);
+                const priceDisplay = marketplacePriceDisplay(sessionUser, d);
                 const cardClass = [
                   "driver-card",
                   d.featured ? "driver-card--featured" : "",
@@ -287,23 +292,19 @@ export default function MarketplacePage() {
                       <span className="driver-meta-item"><Truck className="icon-sm" />{d.equip}</span>
                       <span className="driver-meta-item"><Calendar className="icon-sm" />Avail {fmtDate(d.avail)}</span>
                     </div>
-                    <div className="driver-price-row">
+                    <div className={`driver-price-row${priceDisplay === "hidden" ? " driver-price-row--no-price" : ""}`}>
                       <div>
-                        {showPrice ? (
+                        {priceDisplay === "show" ? (
                           <>
                             <div className="driver-price">{fmtRecruitingFee(d.price)}</div>
                             <div className="driver-fee-label t-caption t-secondary">{d.priceLabel ?? "Platform recruiting fee"}</div>
                           </>
-                        ) : (
+                        ) : priceDisplay === "blur" ? (
                           <div className="driver-price-blurred">
                             <span className="driver-price-blurred-value">$•••</span>
-                            <span className="t-caption t-secondary">
-                              {sessionUser?.accountType === "carrier"
-                                ? "Verify account to view fee"
-                                : "Recruiter pricing hidden"}
-                            </span>
+                            <span className="t-caption t-secondary">Verify account to view fee</span>
                           </div>
-                        )}
+                        ) : null}
                         {d.isTrending || trendingListingIds.has(d.id) ? (
                           <span className="badge badge-red trending-badge"><Flame className="icon-sm" /> Trending</span>
                         ) : null}

@@ -72,6 +72,16 @@ export async function syncCdlScorePlanCredits(plan: CarrierPlanId, targetRegistr
   return Boolean((data as { success?: boolean })?.success);
 }
 
+export async function refreshCdlScoreCreditsFromServer(): Promise<number> {
+  if (!supabase) return 0;
+  const { data, error } = await supabase.functions.invoke("provision-cdl-score", {
+    body: { refreshCreditsOnly: true }
+  });
+  if (error) return 0;
+  const result = data as { success?: boolean; credits?: number };
+  return result?.success ? Number(result.credits ?? 0) : 0;
+}
+
 export async function searchDriverOnCdlScore(driverName: string): Promise<CdlScoreSearchResponse> {
   if (!supabase) {
     return { success: false, drivers: [], creditsLeft: 0, error: "Supabase not configured" };
@@ -94,4 +104,4 @@ export async function fetchLocalCdlScoreCredits(): Promise<number> {
   return Number(data?.cdl_score_search_credits ?? 0);
 }
 
-export { CDL_SCORE_APP_URL, CDL_SCORE_REGISTER_URL } from "../lib/cdl-score-urls";
+export { CDL_SCORE_APP_URL, CDL_SCORE_REGISTER_URL, buildCdlScoreDriverSearchUrl } from "../lib/cdl-score-urls";

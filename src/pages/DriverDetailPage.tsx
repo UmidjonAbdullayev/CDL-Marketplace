@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { canStartHiring } from "../lib/account-capabilities";
-import { isCarrierMarketplaceVerified, shouldShowDetailPrice } from "../lib/marketplace-display";
+import { detailPriceDisplay, isCarrierMarketplaceVerified } from "../lib/marketplace-display";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
@@ -21,7 +21,7 @@ export default function DriverDetailPage() {
   const listingId = Number(id);
   const driver = useMemo(() => (listingId ? driverDetails[listingId] ?? null : null), [driverDetails, listingId]);
   const canStartHiringProcess = canStartHiring(sessionUser) && isCarrierMarketplaceVerified(sessionUser);
-  const showPrice = driver ? shouldShowDetailPrice(sessionUser, driver.sellerCompanyId) : false;
+  const priceDisplay = driver ? detailPriceDisplay(sessionUser, driver.sellerCompanyId) : "hidden";
   const [hireAvailable, setHireAvailable] = useState(true);
   const [hireBlockedReason, setHireBlockedReason] = useState("");
 
@@ -87,19 +87,23 @@ export default function DriverDetailPage() {
         <div className="detail-sidebar">
           <div className="card">
             <div className="card-body">
-              <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase", marginBottom: 4 }}>{driver.priceLabel ?? "Platform Recruiting Fee"}</div>
-              {showPrice ? (
-                <div className="detail-price">{fmtRecruitingFee(driver.price)}</div>
-              ) : (
-                <div className="detail-price detail-price--blurred">$•••</div>
-              )}
-              <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
-                {sessionUser?.accountType === "carrier" && !isCarrierMarketplaceVerified(sessionUser)
-                  ? "Verify your MC number and company profile to view fees and start hiring."
-                  : canStartHiring(sessionUser)
-                  ? "Fee for recruiting coordination through CDL Exchange"
-                  : "Your listed price for this driver lead"}
-              </p>
+              {priceDisplay !== "hidden" ? (
+                <>
+                  <div className="lbl" style={{ fontSize: 11, color: "var(--gray-500)", textTransform: "uppercase", marginBottom: 4 }}>{driver.priceLabel ?? "Platform Recruiting Fee"}</div>
+                  {priceDisplay === "show" ? (
+                    <div className="detail-price">{fmtRecruitingFee(driver.price)}</div>
+                  ) : (
+                    <div className="detail-price detail-price--blurred">$•••</div>
+                  )}
+                  <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
+                    {sessionUser?.accountType === "carrier" && !isCarrierMarketplaceVerified(sessionUser)
+                      ? "Verify your MC number and company profile to view fees and start hiring."
+                      : canStartHiring(sessionUser)
+                        ? "Fee for recruiting coordination through CDL Exchange"
+                        : "Your listed price for this driver lead"}
+                  </p>
+                </>
+              ) : null}
               <div className="detail-seller"><StarRating rating={driver.sellerRating} /> {driver.seller}</div>
               {canStartHiringProcess ? (
                 hireAvailable ? (

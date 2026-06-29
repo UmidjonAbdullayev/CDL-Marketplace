@@ -17,7 +17,7 @@ import { sessionFromAccount } from "../lib/session";
 import { AuthError, formatRegistrationError, sendPasswordResetEmail, signInWithEmailPassword } from "../services/auth";
 import { submitRegistration } from "../services/registration";
 import { useRegisterFlowScroll } from "../hooks/useRegisterFlowScroll";
-import { linkRegistrationToCdlScore } from "../services/cdlScoreLink";
+import { linkRegistrationToCdlScore, ensureCdlScoreAccountOnLogin } from "../services/cdlScoreLink";
 import { fetchCompanyById } from "../services/company";
 import type {
   AccountType,
@@ -207,9 +207,13 @@ export default function RegisterPage() {
     setLoginError("");
     try {
       const account = await signInWithEmailPassword(loginEmail, loginPassword);
+      const sync = await ensureCdlScoreAccountOnLogin(account, loginPassword).catch(() => null);
       const user = await sessionForAccount(account);
-      signIn(user);
-      showToast(`Welcome back, ${user.name}`, "success");
+      const nextUser = sync?.success && sync.credits !== undefined
+        ? { ...user, cdlScoreLinked: true, cdlScoreCredits: sync.credits }
+        : user;
+      signIn(nextUser);
+      showToast(`Welcome back, ${nextUser.name}`, "success");
       navigate("/dashboard");
     } catch (err) {
       const msg = err instanceof AuthError ? err.message : err instanceof Error ? err.message : "Sign in failed";
