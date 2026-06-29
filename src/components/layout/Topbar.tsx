@@ -1,16 +1,17 @@
-import { Bell, Menu, MessageCircle, Search } from "lucide-react";
+import { Bell, Menu, MessageCircle, Search, Shield } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
 import { canAccessAdminPanel } from "../../lib/account-capabilities";
+import { searchCreditsForPlan } from "../../lib/carrier-plans";
 import { shouldLaunchMarketplaceSearch } from "../../lib/search-navigation";
 import { NotificationsPanel } from "./NotificationsPanel";
 
 export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { searchQuery, setSearchQuery, showToast, sessionUser, signOut } = useApp();
+  const { searchQuery, setSearchQuery, showToast, sessionUser, signOut, refreshCdlScoreCredits } = useApp();
   const { badges, notifications, dismissAllNotifications, dismissNotification } = useExchangeData();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -57,6 +58,15 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
     navigate("/admin");
   };
 
+  const carrierPlanCredits =
+    sessionUser?.accountType === "carrier" ? searchCreditsForPlan(sessionUser.selectedPlan) : 0;
+
+  useEffect(() => {
+    if (sessionUser?.accountType === "carrier") {
+      void refreshCdlScoreCredits();
+    }
+  }, [sessionUser?.accountType, sessionUser?.companyId, refreshCdlScoreCredits]);
+
   return (
     <header className="topbar">
       <button className="menu-toggle" id="menuToggle" onClick={onToggleSidebar} aria-label="Open menu">
@@ -84,6 +94,15 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           <span className="search-kbd">⌘ K</span>
         </div>
       </div>
+      {sessionUser?.accountType === "carrier" ? (
+        <div className="topbar-credits-pill" title="CDL Score driver search credits from your plan">
+          <Shield className="icon-sm" />
+          <span className="topbar-credits-value">{sessionUser.cdlScoreCredits ?? 0}</span>
+          <span className="topbar-credits-label">
+            {carrierPlanCredits > 0 ? `of ${carrierPlanCredits} searches` : "searches"}
+          </span>
+        </div>
+      ) : null}
       <div className="topbar-actions">
         <div className="notif-wrap">
           <button

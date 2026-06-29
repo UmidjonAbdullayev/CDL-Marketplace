@@ -15,6 +15,7 @@ import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { fetchCompanyById } from "../services/company";
 import { buildSessionAccount, fetchRegistrationById } from "../services/registration";
 import { restoreSessionFromAuth, signOutAuth } from "../services/auth";
+import { refreshCdlScoreCreditsFromServer } from "../services/cdlScore";
 import { DisputeForm } from "../components/DisputeForm";
 import { WalletDepositPanel } from "../components/billing/WalletDepositPanel";
 import {
@@ -59,6 +60,7 @@ interface AppContextValue {
   closeModal: () => void;
   refreshUserState: () => Promise<void>;
   refreshWalletBalance: () => Promise<void>;
+  refreshCdlScoreCredits: () => Promise<void>;
   openDepositModal: () => void;
   buyDriver: (id: number, amount: number) => Promise<void>;
   reserveDriver: (id: number) => Promise<void>;
@@ -126,6 +128,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error("Failed to refresh wallet balance", err);
     }
   }, [sessionUser?.companyId]);
+
+  const refreshCdlScoreCredits = useCallback(async () => {
+    if (!sessionUser?.companyId || sessionUser.accountType !== "carrier" || !isSupabaseConfigured) return;
+    try {
+      const credits = await refreshCdlScoreCreditsFromServer();
+      setSessionUser((prev) => {
+        if (!prev || prev.companyId !== sessionUser.companyId) return prev;
+        if (prev.cdlScoreCredits === credits && prev.cdlScoreLinked) return prev;
+        const next = { ...prev, cdlScoreCredits: credits, cdlScoreLinked: true };
+        writeSession(next);
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to refresh CDL Score credits", err);
+    }
+  }, [sessionUser?.companyId, sessionUser?.accountType]);
 
   const signIn = useCallback((user: SessionUser) => {
     writeSession(user);
@@ -235,6 +253,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshUserState();
   }, [refreshUserState]);
+
+  useEffect(() => {
+    if (sessionUser?.accountType === "carrier") {
+      void refreshCdlScoreCredits();
+    }
+  }, [sessionUser?.accountType, sessionUser?.companyId, refreshCdlScoreCredits]);
 
   const closeModal = useCallback(() => {
     setModal((prev) => ({ ...prev, open: false }));
@@ -425,6 +449,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       closeModal,
       refreshUserState,
       refreshWalletBalance,
+      refreshCdlScoreCredits,
       openDepositModal,
       buyDriver,
       reserveDriver,
@@ -434,7 +459,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isPurchased: (id: number) => purchased.has(id),
       isReserved: (id: number) => reserved.has(id)
     }),
-    [purchased, reserved, dataReady, sessionUser, signIn, signOut, toasts, modal, searchQuery, debouncedSearch, showToast, openModal, closeModal, refreshUserState, refreshWalletBalance, openDepositModal, buyDriver, reserveDriver, openBuyModal, openReserveModal, openDisputeModal]
+    [purchased, reserved, dataReady, sessionUser, signIn, signOut, toasts, modal, searchQuery, debouncedSearch, showToast, openModal, closeModal, refreshUserState, refreshWalletBalance, refreshCdlScoreCredits, openDepositModal, buyDriver, reserveDriver, openBuyModal, openReserveModal, openDisputeModal]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
