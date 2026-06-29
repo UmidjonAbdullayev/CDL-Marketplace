@@ -95,6 +95,109 @@ async function ensureScoreCompanyLink(
   return reg?.company_id ?? null;
 }
 
+async function grantCreditsIfNeeded(
+  scoreAdmin: ReturnType<typeof createClient>,
+  scoreUserId: string,
+  targetCredits: number
+): Promise<number> {
+  if (targetCredits <= 0) return syncScoreCredits(scoreAdmin, scoreUserId);
+
+  const liveBefore = await syncScoreCredits(scoreAdmin, scoreUserId);
+  if (liveBefore < targetCredits) {
+    await scoreAdmin.rpc("add_user_credits", {
+      target_user_id: scoreUserId,
+      amount: targetCredits - liveBefore
+    });
+  }
+  return syncScoreCredits(scoreAdmin, scoreUserId);
+}
+
+type ProvisionOpts = {
+  email: string;
+  password?: string;
+  companyName: string;
+  mcNumber: string;
+  contactName: string;
+  exchangeCompanyId: string;
+  searchCredits: number;
+};
+
+async function provisionAndLinkScoreUser(
+  scoreAdmin: ReturnType<typeof createClient>,
+  exchangeAdmin: ReturnType<typeof createClient>,
+  opts: ProvisionOpts
+): Promise<{ scoreUserId: string; credits: number }> {
+  const email = opts.email.trim().toLowerCase();
+  const password = opts.password?.trim() || `${crypto.randomUUID()}X1!a`;
+
+  let scoreUserId: string | null = null;
+
+  const createRes = await scoreAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { source: "cdl_exchange" }
+  });
+
+  if (createRes.data.user?.id) {
+    scoreUserId = createRes.data.user.id;
+  } else if (createRes.error?.message?.toLowerCase().includes("already")) {
+    scoreUserId = await findScoreUserId(scoreAdmin, email);
+  } else if (createRes.error) {
+    throw new Error(createRes.error.message);
+  }
+
+  if (!scoreUserId) throw new Error("Could not create CDL Score user");
+
+  await scoreAdmin.auth.admin.updateUserById(scoreUserId, {
+    password,
+    email_confirm: true
+  });
+
+  const scoreCompanyId = await ensureScoreCompanyLink(
+    scoreAdmin,
+    scoreUserId,
+    email,
+    opts.companyName,
+    opts.mcNumber
+  );
+
+  const credits = await grantCreditsIfNeeded(scoreAdmin, scoreUserId, opts.searchCredits);
+
+  await scoreAdmin.from("crm_users").upsert(
+    {
+      user_id: scoreUserId,
+      company_id: scoreCompanyId,
+      email,
+      login_password: opts.password?.trim() || null,
+      full_name: opts.contactName,
+      role: "admin",
+      is_active: true
+    },
+    { onConflict: "user_id" }
+  );
+
+  await exchangeAdmin
+    .from("companies")
+    .update({
+      cdl_score_verified: true,
+      cdl_score_email: email,
+      cdl_score_user_id: scoreUserId,
+      cdl_score_search_credits: credits
+    })
+    .eq("id", opts.exchangeCompanyId);
+
+  return { scoreUserId, credits };
+}
+
+function profileFromRegistration(profile: Record<string, string>) {
+  return {
+    companyName: String(profile.companyName ?? profile.agencyName ?? profile.fullName ?? "Carrier"),
+    mcNumber: String(profile.mcNumber ?? "PENDING"),
+    contactName: String(profile.contactPersonName ?? profile.companyName ?? profile.fullName ?? "Carrier")
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -129,35 +232,85 @@ Deno.serve(async (req) => {
     const syncOnly = Boolean(body.syncCreditsOnly);
     const refreshCreditsOnly = Boolean(body.refreshCreditsOnly);
     const searchCredits = Number(body.searchCredits ?? 0);
+    const targetRegistrationId = body.targetRegistrationId
+      ? String(body.targetRegistrationId)
+      : null;
 
-    const { data: account } = await exchangeAdmin
+    const { data: callerAccount } = await exchangeAdmin
       .from("registration_accounts")
-      .select("id, email, company_id, account_type, profile_data, selected_plan")
+      .select("id, email, company_id, account_type, profile_data, selected_plan, is_admin, admin_role, status")
       .eq("auth_user_id", authData.user.id)
       .maybeSingle();
 
-    if (!account?.company_id) return json({ success: false, error: "Exchange account not found" }, 404);
+    if (!callerAccount?.company_id && !targetRegistrationId) {
+      return json({ success: false, error: "Exchange account not found" }, 404);
+    }
 
     if (syncOnly || refreshCreditsOnly) {
-      let companyId = account.company_id;
+      let companyId = callerAccount?.company_id ?? null;
+      let grantCredits = searchCredits;
 
-      if (body.targetRegistrationId) {
-        const { data: caller } = await exchangeAdmin
-          .from("registration_accounts")
-          .select("is_admin, admin_role")
-          .eq("auth_user_id", authData.user.id)
-          .maybeSingle();
-        const isStaff = Boolean(caller?.is_admin || caller?.admin_role === "manager" || caller?.admin_role === "admin");
+      if (targetRegistrationId) {
+        const isStaff = Boolean(
+          callerAccount?.is_admin ||
+            callerAccount?.admin_role === "manager" ||
+            callerAccount?.admin_role === "admin"
+        );
         if (!isStaff) return json({ success: false, error: "Forbidden" }, 403);
 
         const { data: target } = await exchangeAdmin
           .from("registration_accounts")
-          .select("company_id")
-          .eq("id", String(body.targetRegistrationId))
+          .select("id, email, company_id, account_type, profile_data, selected_plan, status")
+          .eq("id", targetRegistrationId)
           .maybeSingle();
+
         if (!target?.company_id) return json({ success: false, error: "Target account not found" }, 404);
         companyId = target.company_id;
+
+        if (grantCredits <= 0 && target.selected_plan) {
+          const planCredits: Record<string, number> = {
+            free: 0,
+            starter: 5,
+            growth: 15,
+            pro_fleet: 50
+          };
+          grantCredits = planCredits[String(target.selected_plan)] ?? 0;
+        }
+
+        const { data: company } = await exchangeAdmin
+          .from("companies")
+          .select("cdl_score_user_id, cdl_score_search_credits")
+          .eq("id", companyId)
+          .single();
+
+        if (!company?.cdl_score_user_id) {
+          const profile = profileFromRegistration((target.profile_data ?? {}) as Record<string, string>);
+          const result = await provisionAndLinkScoreUser(scoreAdmin, exchangeAdmin, {
+            email: target.email,
+            companyName: profile.companyName,
+            mcNumber: profile.mcNumber,
+            contactName: profile.contactName,
+            exchangeCompanyId: companyId,
+            searchCredits: grantCredits
+          });
+          return json({ success: true, credits: result.credits, provisioned: true });
+        }
+
+        if (syncOnly && grantCredits > 0) {
+          const liveCredits = await grantCreditsIfNeeded(
+            scoreAdmin,
+            company.cdl_score_user_id,
+            grantCredits
+          );
+          await exchangeAdmin
+            .from("companies")
+            .update({ cdl_score_search_credits: liveCredits, cdl_score_verified: true })
+            .eq("id", companyId);
+          return json({ success: true, credits: liveCredits });
+        }
       }
+
+      if (!companyId) return json({ success: false, error: "Company not found" }, 404);
 
       const { data: company } = await exchangeAdmin
         .from("companies")
@@ -169,96 +322,71 @@ Deno.serve(async (req) => {
         return json({ success: false, error: "CDL Score account not linked" }, 400);
       }
 
-      if (syncOnly && searchCredits > 0) {
-        await scoreAdmin.rpc("add_user_credits", {
-          target_user_id: company.cdl_score_user_id,
-          amount: searchCredits
-        });
+      if (syncOnly && grantCredits > 0) {
+        const liveCredits = await grantCreditsIfNeeded(
+          scoreAdmin,
+          company.cdl_score_user_id,
+          grantCredits
+        );
+        await exchangeAdmin
+          .from("companies")
+          .update({ cdl_score_search_credits: liveCredits })
+          .eq("id", companyId);
+        return json({ success: true, credits: liveCredits });
       }
 
       const liveCredits = await syncScoreCredits(scoreAdmin, company.cdl_score_user_id);
-      const nextCredits = syncOnly && searchCredits > 0
-        ? Number(company.cdl_score_search_credits ?? 0) + searchCredits
-        : liveCredits;
-
       await exchangeAdmin
         .from("companies")
-        .update({ cdl_score_search_credits: nextCredits })
+        .update({ cdl_score_search_credits: liveCredits })
         .eq("id", companyId);
-
-      return json({ success: true, credits: nextCredits });
+      return json({ success: true, credits: liveCredits });
     }
 
-    const email = String(body.email ?? account.email).trim().toLowerCase();
+    if (!callerAccount?.company_id) {
+      return json({ success: false, error: "Exchange account not found" }, 404);
+    }
+
+    const email = String(body.email ?? callerAccount.email).trim().toLowerCase();
     const password = String(body.password ?? "");
-    const profile = account.profile_data as Record<string, string>;
-    const companyName = String(body.companyName ?? profile.companyName ?? profile.agencyName ?? profile.fullName ?? "Carrier");
-    const mcNumber = String(body.mcNumber ?? profile.mcNumber ?? "PENDING");
-    const contactName = String(body.contactName ?? companyName);
+    const profile = profileFromRegistration((callerAccount.profile_data ?? {}) as Record<string, string>);
+    const companyName = String(body.companyName ?? profile.companyName);
+    const mcNumber = String(body.mcNumber ?? profile.mcNumber);
+    const contactName = String(body.contactName ?? profile.contactName);
 
     if (!email || !password) {
       return json({ success: false, error: "Email and password are required" }, 400);
     }
 
-    let scoreUserId: string | null = null;
+    const grantOnProvision =
+      searchCredits > 0 ||
+      (callerAccount.account_type === "carrier" &&
+        callerAccount.status === "active" &&
+        searchCredits === 0 &&
+        Boolean(body.grantPlanCreditsIfDue));
 
-    const createRes = await scoreAdmin.auth.admin.createUser({
+    let creditsToGrant = searchCredits;
+    if (grantOnProvision && creditsToGrant <= 0 && callerAccount.selected_plan) {
+      const planCredits: Record<string, number> = {
+        free: 0,
+        starter: 5,
+        growth: 15,
+        pro_fleet: 50
+      };
+      creditsToGrant = planCredits[String(callerAccount.selected_plan)] ?? 0;
+    }
+
+    const result = await provisionAndLinkScoreUser(scoreAdmin, exchangeAdmin, {
       email,
       password,
-      email_confirm: true,
-      user_metadata: { source: "cdl_exchange", exchange_account_id: account.id }
+      companyName,
+      mcNumber,
+      contactName,
+      exchangeCompanyId: callerAccount.company_id,
+      searchCredits: creditsToGrant
     });
 
-    if (createRes.data.user?.id) {
-      scoreUserId = createRes.data.user.id;
-    } else if (createRes.error?.message?.toLowerCase().includes("already")) {
-      scoreUserId = await findScoreUserId(scoreAdmin, email);
-    } else if (createRes.error) {
-      return json({ success: false, error: createRes.error.message }, 400);
-    }
-
-    if (!scoreUserId) return json({ success: false, error: "Could not create CDL Score user" }, 400);
-
-    await scoreAdmin.auth.admin.updateUserById(scoreUserId, {
-      password,
-      email_confirm: true
-    });
-
-    const scoreCompanyId = await ensureScoreCompanyLink(scoreAdmin, scoreUserId, email, companyName, mcNumber);
-
-    if (searchCredits > 0) {
-      await scoreAdmin.rpc("add_user_credits", {
-        target_user_id: scoreUserId,
-        amount: searchCredits
-      });
-    }
-
-    await scoreAdmin.from("crm_users").upsert(
-      {
-        user_id: scoreUserId,
-        company_id: scoreCompanyId,
-        email,
-        login_password: password,
-        full_name: contactName,
-        role: "admin",
-        is_active: true
-      },
-      { onConflict: "user_id" }
-    );
-
-    const liveCredits = await syncScoreCredits(scoreAdmin, scoreUserId);
-
-    await exchangeAdmin
-      .from("companies")
-      .update({
-        cdl_score_verified: true,
-        cdl_score_email: email,
-        cdl_score_user_id: scoreUserId,
-        cdl_score_search_credits: liveCredits
-      })
-      .eq("id", account.company_id);
-
-    return json({ success: true, userId: scoreUserId, credits: liveCredits });
+    return json({ success: true, userId: result.scoreUserId, credits: result.credits });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unexpected error";
     return json({ success: false, error: message }, 500);

@@ -1,0 +1,8 @@
+# CDL Exchange Supabase local config (deploy with: supabase functions deploy provision-cdl-score)
+project_id = "sksgjokkcfnmdgvsmvdn"
+
+[functions.provision-cdl-score]
+verify_jwt = true
+
+[functions.cdl-score-driver-search]
+verify_jwt = true
