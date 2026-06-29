@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePlatformRealtime } from "../../hooks/usePlatformRealtime";
 import { AlertCircle, CheckCircle2, CreditCard, Shield, XCircle } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import { CARRIER_PLANS, carrierPlanLabel, searchCreditsForPlan } from "../../lib/carrier-plans";
+import { CARRIER_PLANS, carrierPlanLabel } from "../../lib/carrier-plans";
 import { fmtDate } from "../../lib/format";
 import {
   approveRegistration,
@@ -228,10 +228,18 @@ export function AdminRegistrationReview() {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => void act(
-                      () => grantCarrierCdlScoreCredits(selected.id, selected.selected_plan as CarrierPlanId),
-                      `CDL Score credits synced (${searchCreditsForPlan(selected.selected_plan)} searches)`
-                    )}
+                    onClick={() => void (async () => {
+                      try {
+                        const credits = await grantCarrierCdlScoreCredits(
+                          selected.id,
+                          selected.selected_plan as CarrierPlanId
+                        );
+                        showToast(`CDL Score credits synced — ${credits} searches available`, "success");
+                        await load();
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : "Action failed", "error");
+                      }
+                    })()}
                   >
                     <Shield className="icon-sm" /> Sync CDL Score credits
                   </button>
