@@ -21,6 +21,20 @@ function attachSessionHeaders(init?: RequestInit): RequestInit {
   return { ...init, headers };
 }
 
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+/** Edge Functions CORS only allows standard headers — custom x-company-id breaks browser invoke. */
+function globalFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (requestUrl(input).includes("/functions/v1/")) {
+    return fetch(input, init);
+  }
+  return fetch(input, attachSessionHeaders(init));
+}
+
 export const supabase = url && anonKey
   ? createClient(url, anonKey, {
       auth: {
@@ -29,7 +43,7 @@ export const supabase = url && anonKey
         detectSessionInUrl: true
       },
       global: {
-        fetch: (input, init) => fetch(input, attachSessionHeaders(init))
+        fetch: globalFetch
       }
     })
   : null;

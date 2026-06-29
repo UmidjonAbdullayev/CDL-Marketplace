@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePlatformRealtime } from "../../hooks/usePlatformRealtime";
 import { AlertCircle, CheckCircle2, CreditCard, Shield, XCircle } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import { CARRIER_PLANS, carrierPlanLabel } from "../../lib/carrier-plans";
+import { CARRIER_PLANS, carrierPlanLabel, searchCreditsForPlan } from "../../lib/carrier-plans";
 import { fmtDate } from "../../lib/format";
 import {
   approveRegistration,
   confirmCarrierPayment,
   displayAccountName,
   fetchRegistrationAccounts,
+  grantCarrierCdlScoreCredits,
   rejectRegistration,
   suspendRegistration,
   updateRegistrationPlan,
@@ -85,8 +86,9 @@ export function AdminRegistrationReview() {
       await fn();
       showToast(msg, "success");
       await load();
-    } catch {
-      showToast("Action failed", "error");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Action failed";
+      showToast(msg, "error");
     }
   };
 
@@ -222,6 +224,18 @@ export function AdminRegistrationReview() {
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => void act(() => verifyRegistrationProfile(selected.id, !selected.profile_verified), selected.profile_verified ? "Profile unverified" : "Profile verified")}>
                   <Shield className="icon-sm" /> {selected.profile_verified ? "Unverify Profile" : "Verify Profile"}
                 </button>
+                {selected.account_type === "carrier" && selected.status === "active" && selected.selected_plan && selected.selected_plan !== "free" ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => void act(
+                      () => grantCarrierCdlScoreCredits(selected.id, selected.selected_plan as CarrierPlanId),
+                      `CDL Score credits synced (${searchCreditsForPlan(selected.selected_plan)} searches)`
+                    )}
+                  >
+                    <Shield className="icon-sm" /> Sync CDL Score credits
+                  </button>
+                ) : null}
                 {selected.account_type === "carrier" && selected.status === "pending_payment" ? (
                   <button
                     type="button"
