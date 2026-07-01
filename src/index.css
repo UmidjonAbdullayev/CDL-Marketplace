@@ -1206,6 +1206,68 @@ tbody tr:hover td { background: var(--bg); }
 .driver-card--clickable:hover { border-color: var(--primary); }
 .driver-fee-label { margin-top: 2px; }
 
+.app--public { min-height: 100vh; display: flex; flex-direction: column; }
+.main--public { flex: 1; min-height: 0; }
+.main--public .content { padding: var(--s5); max-width: 1400px; margin: 0 auto; width: 100%; }
+.topbar--public {
+  justify-content: space-between;
+  padding: var(--s3) var(--s5);
+  gap: var(--s4);
+}
+.public-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.public-topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+.marketplace-guest-banner,
+.register-hire-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--blue-light);
+}
+.driver-preferences-snippet {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin: var(--s2) 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-btn);
+  background: var(--gray-50);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.driver-preferences-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s4);
+}
+.driver-pref-item {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+}
+.driver-pref-item--wide { grid-column: 1 / -1; }
+.driver-pref-icon { color: var(--primary); margin-top: 2px; flex-shrink: 0; }
+@media (max-width: 768px) {
+  .driver-preferences-grid { grid-template-columns: 1fr; }
+  .public-topbar-nav .btn span { display: none; }
+}
+
 /* Contract & hiring workspace */
 .contract-layout { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
 .contract-body { font-size: 14px; line-height: 1.65; }

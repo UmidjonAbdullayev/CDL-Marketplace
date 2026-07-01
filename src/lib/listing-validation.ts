@@ -3,12 +3,14 @@ import { validateRecruiterListPrice } from "./listing-pricing";
 export const LISTING_STEPS = [
   "Basic Info",
   "Qualifications",
-  "Availability",
+  "Availability & Preferences",
   "Documents",
   "Consent",
   "Pricing",
   "Review"
 ] as const;
+
+import { validateDriverPreferences } from "./driver-preferences";
 
 export type ListingFieldSnapshot = {
   first: string;
@@ -22,6 +24,10 @@ export type ListingFieldSnapshot = {
   equipment: string;
   routePref: string;
   driverType: string;
+  desiredWeeklyPay: string;
+  weeksOutPreference: string;
+  maxDispatchFeePct: number | "";
+  companyExpectations: string;
   documents: string[];
   consent: boolean;
   price: number | "";
@@ -71,6 +77,17 @@ export function listingStepErrors(stepNum: number, fields: ListingFieldSnapshot)
     if (!fields.equipment) errs.push("Equipment preference is required");
     if (!fields.routePref) errs.push("Route preference is required");
     if (!fields.driverType) errs.push("Driver type is required");
+    errs.push(
+      ...validateDriverPreferences(
+        {
+          desiredWeeklyPay: fields.desiredWeeklyPay,
+          weeksOutPreference: fields.weeksOutPreference,
+          maxDispatchFeePct: fields.maxDispatchFeePct === "" ? null : fields.maxDispatchFeePct,
+          companyExpectations: fields.companyExpectations
+        },
+        fields.driverType
+      )
+    );
   }
   if (stepNum === 4) {
     if (!fields.documents.length) errs.push("Upload at least one document");

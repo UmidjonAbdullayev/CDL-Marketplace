@@ -7,6 +7,7 @@ import { ToastContainer } from "./ToastContainer";
 import { StickyUpgradeBanner } from "./StickyUpgradeBanner";
 import { PaymentProcessingBanner } from "../billing/PaymentProcessingBanner";
 import { WalletDepositPendingBanner } from "../billing/WalletDepositPendingBanner";
+import { PublicTopbar } from "./PublicTopbar";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
 import { canActAsCarrier, isPlatformManager, isSellerNav } from "../../lib/account-capabilities";
@@ -22,6 +23,7 @@ import {
   type ManagerPaymentAlertPayload
 } from "../../hooks/useManagerPaymentAlert";
 import { shouldLaunchMarketplaceSearch } from "../../lib/search-navigation";
+import { isPublicBrowsePath, registerReturnPath } from "../../lib/public-routes";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -84,8 +86,30 @@ export function AppShell() {
 
   const closeSidebar = () => setSidebarOpen(false);
 
+  const browsingPublic = isPublicBrowsePath(location.pathname);
+
+  if (!isSignedIn && !browsingPublic) {
+    return (
+      <Navigate
+        to="/register"
+        replace
+        state={{ from: registerReturnPath(location.pathname, location.search) }}
+      />
+    );
+  }
+
   if (!isSignedIn) {
-    return <Navigate to="/register" replace state={{ signedOut: true, from: location.pathname }} />;
+    return (
+      <div className="app app--public">
+        <PublicTopbar />
+        <div className="main main--public">
+          <div className="content" id="content">
+            <Outlet />
+          </div>
+        </div>
+        <ToastContainer />
+      </div>
+    );
   }
 
   if (appLoading) {
