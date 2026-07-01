@@ -1,29 +1,32 @@
-import { ArrowLeft, ArrowRight, FileText, Info, Lock, ShieldCheck, UserCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Info, Lock, ShieldCheck, UserCheck, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { canStartHiring } from "../lib/account-capabilities";
 import { detailPriceDisplay, isCarrierMarketplaceVerified } from "../lib/marketplace-display";
+import { registerReturnPath } from "../lib/public-routes";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { fmtDate, fmtRecruitingFee, fullName } from "../lib/format";
 import { CompanyReviewsPanel } from "../components/CompanyReviewsPanel";
 import { CdlScoreDriverPanel } from "../components/cdl-score/CdlScoreDriverPanel";
+import { DriverPreferencesPanel } from "../components/listing/DriverPreferencesPanel";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchListingHireAvailability } from "../services/hiring";
 
 export default function DriverDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { sessionUser } = useApp();
+  const { sessionUser, isSignedIn } = useApp();
   const { driverDetails, driverDetailLoading, loadDriverDetail } = useExchangeData();
 
   const listingId = Number(id);
   const driver = useMemo(() => (listingId ? driverDetails[listingId] ?? null : null), [driverDetails, listingId]);
-  const canStartHiringProcess = canStartHiring(sessionUser) && isCarrierMarketplaceVerified(sessionUser);
+  const canStartHiringProcess = isSignedIn && canStartHiring(sessionUser) && isCarrierMarketplaceVerified(sessionUser);
   const priceDisplay = driver ? detailPriceDisplay(sessionUser, driver.sellerCompanyId) : "hidden";
   const [hireAvailable, setHireAvailable] = useState(true);
   const [hireBlockedReason, setHireBlockedReason] = useState("");
+  const registerHref = `/register?intent=hire&returnTo=${encodeURIComponent(registerReturnPath(`/driver/${listingId}`))}`;
 
   useEffect(() => {
     if (!listingId || !isSupabaseConfigured) return;
@@ -40,6 +43,13 @@ export default function DriverDetailPage() {
   if ((driverDetailLoading && !driver) || !driver) {
     return <div className="page active"><p className="t-secondary">Loading driver profile...</p></div>;
   }
+
+  const preferences = {
+    desiredWeeklyPay: driver.desiredWeeklyPay,
+    weeksOutPreference: driver.weeksOutPreference,
+    maxDispatchFeePct: driver.maxDispatchFeePct,
+    companyExpectations: driver.companyExpectations
+  };
 
   return (
     <div className="page active">
@@ -62,8 +72,12 @@ export default function DriverDetailPage() {
               <div className="info-item"><div className="lbl">State</div><div className="val">{driver.state}</div></div>
               <div className="info-item"><div className="lbl">CDL Class</div><div className="val">{driver.cdl}</div></div>
               <div className="info-item"><div className="lbl">Equipment</div><div className="val">{driver.equip}</div></div>
+              <div className="info-item"><div className="lbl">Driver Type</div><div className="val">{driver.driverType}</div></div>
               <div className="info-item"><div className="lbl">Endorsements</div><div className="val">{driver.endorse.length ? driver.endorse.join(", ") : "None"}</div></div>
               <div className="info-item"><div className="lbl">Availability</div><div className="val">{fmtDate(driver.avail)}</div></div>
+            </div>
+            <div style={{ marginTop: "var(--s5)" }}>
+              <DriverPreferencesPanel preferences={preferences} driverType={driver.driverType} />
             </div>
             <div style={{ marginTop: "var(--s5)", padding: "var(--s4)", background: "var(--blue-light)", borderRadius: "var(--radius-btn)", border: "1px solid var(--border)" }} className="t-secondary">
               <span style={{ display: "flex", alignItems: "flex-start", gap: "var(--s2)" }}>
@@ -74,14 +88,16 @@ export default function DriverDetailPage() {
                 </span>
               </span>
             </div>
-            <div style={{ marginTop: "var(--s5)" }}>
-              <CdlScoreDriverPanel
-                driverFirst={driver.first}
-                driverLast={driver.last}
-                listingScore={driver.score}
-                creditsAvailable={sessionUser?.cdlScoreCredits ?? 0}
-              />
-            </div>
+            {isSignedIn ? (
+              <div style={{ marginTop: "var(--s5)" }}>
+                <CdlScoreDriverPanel
+                  driverFirst={driver.first}
+                  driverLast={driver.last}
+                  listingScore={driver.score}
+                  creditsAvailable={sessionUser?.cdlScoreCredits ?? 0}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="detail-sidebar">
@@ -103,9 +119,17 @@ export default function DriverDetailPage() {
                         : "Your listed price for this driver lead"}
                   </p>
                 </>
+              ) : !isSignedIn ? (
+                <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
+                  Create a carrier account to view recruiting fees and start the hiring process.
+                </p>
               ) : null}
               <div className="detail-seller"><StarRating rating={driver.sellerRating} /> {driver.seller}</div>
-              {canStartHiringProcess ? (
+              {!isSignedIn ? (
+                <Link to={registerHref} className="btn btn-primary btn-block" style={{ marginTop: 16 }}>
+                  <UserPlus className="icon-sm" /> Register to Hire
+                </Link>
+              ) : canStartHiringProcess ? (
                 hireAvailable ? (
                   <button
                     className="btn btn-primary btn-block"
@@ -130,26 +154,48 @@ export default function DriverDetailPage() {
                 )
               ) : (
                 <div className="action-locked-wrap" style={{ marginTop: 16 }}>
-                  <button type="button" className="btn btn-primary btn-block action-locked-btn" disabled aria-disabled="true">
-                    <Lock className="icon-sm" />
-                    Start Hiring Process
-                  </button>
-                  <div className="action-locked-callout">
-                    <Info className="icon-sm action-locked-icon" aria-hidden="true" />
-                    <div>
-                      <strong>Not available for recruiter accounts</strong>
-                      <p>
-                        Only carrier / company accounts can start hiring and purchase leads. As a recruiter you can
-                        list drivers, manage ongoing deals, and chat with carriers in deal workspaces.
-                      </p>
-                    </div>
-                  </div>
+                  {sessionUser && canStartHiring(sessionUser) && !isCarrierMarketplaceVerified(sessionUser) ? (
+                    <>
+                      <button type="button" className="btn btn-primary btn-block action-locked-btn" disabled aria-disabled="true">
+                        <Lock className="icon-sm" />
+                        Register to Hire
+                      </button>
+                      <div className="action-locked-callout">
+                        <Info className="icon-sm action-locked-icon" aria-hidden="true" />
+                        <div>
+                          <strong>Verification required</strong>
+                          <p>Complete MC and profile verification to view fees and start hiring.</p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn btn-primary btn-block action-locked-btn" disabled aria-disabled="true">
+                        <Lock className="icon-sm" />
+                        Register to Hire
+                      </button>
+                      <div className="action-locked-callout">
+                        <Info className="icon-sm action-locked-icon" aria-hidden="true" />
+                        <div>
+                          <strong>Carrier account required</strong>
+                          <p>
+                            Only carrier / company accounts can start hiring. Recruiters can list drivers and
+                            manage deals from their workspace.
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
-              <div className="escrow-note t-caption t-secondary">Review and sign the recruiting agreement before messaging or document exchange.</div>
+              <div className="escrow-note t-caption t-secondary">
+                {isSignedIn
+                  ? "Review and sign the recruiting agreement before messaging or document exchange."
+                  : "Browse listings for free. Register as a carrier to hire and unlock the full workflow."}
+              </div>
             </div>
           </div>
-          {driver.sellerCompanyId ? (
+          {driver.sellerCompanyId && isSignedIn ? (
             <div className="card">
               <div className="card-header"><h3>Seller Reviews</h3></div>
               <div className="card-body">
@@ -167,9 +213,11 @@ export default function DriverDetailPage() {
               <div>Listed by verified seller</div>
               <div>Consent documentation on file</div>
               <div>Escrow protection included</div>
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => navigate("/ongoing-deals")}>
-                View Ongoing Deals <ArrowRight className="icon-sm" />
-              </button>
+              {isSignedIn ? (
+                <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => navigate("/ongoing-deals")}>
+                  View Ongoing Deals <ArrowRight className="icon-sm" />
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

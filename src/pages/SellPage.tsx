@@ -20,6 +20,7 @@ import { createListing } from "../services/marketplace";
 import { PlatformLimitError, resolveListingLimit, limitHint } from "../services/platformLimits";
 import { uploadChatAttachment } from "../services/chatAttachments";
 import { DriverExperienceFields } from "../components/listing/DriverExperienceFields";
+import { DriverPreferencesFields } from "../components/listing/DriverPreferencesFields";
 import { formatDriverExperience } from "../lib/driver-experience";
 import type { ScoreFlag } from "../types";
 
@@ -45,6 +46,10 @@ export default function SellPage() {
   const [equipment, setEquipment] = useState("Dry Van");
   const [routePref, setRoutePref] = useState("OTR");
   const [driverType, setDriverType] = useState("Owner Operator");
+  const [desiredWeeklyPay, setDesiredWeeklyPay] = useState("");
+  const [weeksOutPreference, setWeeksOutPreference] = useState("");
+  const [maxDispatchFeePct, setMaxDispatchFeePct] = useState<number | "">("");
+  const [companyExpectations, setCompanyExpectations] = useState("");
   const [notes, setNotes] = useState("");
   const [price, setPrice] = useState<number | "">("");
   const [listingDurationDays, setListingDurationDays] = useState(7);
@@ -67,11 +72,15 @@ export default function SellPage() {
       equipment,
       routePref,
       driverType,
+      desiredWeeklyPay,
+      weeksOutPreference,
+      maxDispatchFeePct,
+      companyExpectations,
       documents,
       consent,
       price
     }),
-    [first, last, state, phone, cdlClass, yearsExp, monthsExp, availDate, equipment, routePref, driverType, documents, consent, price]
+    [first, last, state, phone, cdlClass, yearsExp, monthsExp, availDate, equipment, routePref, driverType, desiredWeeklyPay, weeksOutPreference, maxDispatchFeePct, companyExpectations, documents, consent, price]
   );
 
   useEffect(() => {
@@ -153,6 +162,10 @@ export default function SellPage() {
         equipment,
         routePref,
         notes: notes.trim(),
+        desiredWeeklyPay: desiredWeeklyPay.trim(),
+        weeksOutPreference: weeksOutPreference.trim(),
+        maxDispatchFeePct: maxDispatchFeePct === "" ? null : maxDispatchFeePct,
+        companyExpectations: companyExpectations.trim() || undefined,
         price: Number(price),
         driverType,
         listingDurationDays,
@@ -265,7 +278,7 @@ export default function SellPage() {
           <div className="form-group"><label>Endorsements (optional)</label><input value={endorsements} onChange={(e) => setEndorsements(e.target.value)} placeholder="Hazmat, Tanker, Doubles/Triples" /></div>
         </div>
         <div className={`form-step ${step === 3 ? "active" : ""}`}>
-          <h3 style={{ marginBottom: 16 }}>Step 3: Availability & Preferences</h3>
+          <h3 style={{ marginBottom: 16 }}>Step 3: Availability &amp; Driver Preferences</h3>
           <div className="form-row">
             <div className="form-group"><label>Available Date *</label><input type="date" value={availDate} onChange={(e) => setAvailDate(e.target.value)} /></div>
             <div className="form-group"><label>Equipment Preference *</label>
@@ -280,7 +293,17 @@ export default function SellPage() {
               {DRIVER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          <div className="form-group"><label>Additional Notes for Buyers (optional)</label><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Driver preferences, restrictions, special qualifications..." /></div>
+          <DriverPreferencesFields
+            driverType={driverType}
+            values={{ desiredWeeklyPay, weeksOutPreference, maxDispatchFeePct, companyExpectations }}
+            onChange={(patch) => {
+              if (patch.desiredWeeklyPay !== undefined) setDesiredWeeklyPay(patch.desiredWeeklyPay);
+              if (patch.weeksOutPreference !== undefined) setWeeksOutPreference(patch.weeksOutPreference);
+              if (patch.maxDispatchFeePct !== undefined) setMaxDispatchFeePct(patch.maxDispatchFeePct);
+              if (patch.companyExpectations !== undefined) setCompanyExpectations(patch.companyExpectations);
+            }}
+          />
+          <div className="form-group"><label>Internal notes for buyers (optional)</label><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything else recruiters should know when presenting this driver..." /></div>
         </div>
         <div className={`form-step ${step === 4 ? "active" : ""}`}>
           <h3 style={{ marginBottom: 16 }}>Step 4: Upload Documents *</h3>
@@ -367,6 +390,8 @@ export default function SellPage() {
             <strong>Driver:</strong> {first || "—"} {last || ""}<br />
             <strong>Experience:</strong> {yearsExp !== "" && monthsExp !== "" ? formatDriverExperience(Number(yearsExp), Number(monthsExp)) : "—"}<br />
             <strong>Driver Type:</strong> {driverType}<br />
+            <strong>Target Pay:</strong> {desiredWeeklyPay || "—"}<br />
+            <strong>Home Time:</strong> {weeksOutPreference || "—"}<br />
             <strong>Listing Price:</strong> {price !== "" ? fmtPrice(Number(price)) : "—"}<br />
             <strong>Duration:</strong> {listingDurationDays} day{listingDurationDays === 1 ? "" : "s"}<br />
             <strong>Consent:</strong> {consent ? "Confirmed" : "Pending"}<br />

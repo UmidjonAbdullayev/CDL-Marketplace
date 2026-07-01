@@ -103,12 +103,25 @@ export default function RegisterPage() {
   const [resetSent, setResetSent] = useState(false);
 
   const signedOut = Boolean((location.state as { signedOut?: boolean } | null)?.signedOut);
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const hireIntent = searchParams.get("intent") === "hire";
+  const returnTo = searchParams.get("returnTo")
+    || (location.state as { from?: string } | null)?.from
+    || "/dashboard";
 
   useEffect(() => {
     if (isSignedIn) {
-      navigate("/dashboard", { replace: true });
+      const dest = returnTo.startsWith("/") ? returnTo : "/dashboard";
+      navigate(dest, { replace: true });
     }
-  }, [isSignedIn, navigate]);
+  }, [isSignedIn, navigate, returnTo]);
+
+  useEffect(() => {
+    if (hireIntent) {
+      setMode("register");
+      setAccountType("carrier");
+    }
+  }, [hireIntent]);
 
   useEffect(() => {
     if (signedOut) setMode("login");
@@ -214,7 +227,7 @@ export default function RegisterPage() {
         : user;
       signIn(nextUser);
       showToast(`Welcome back, ${nextUser.name}`, "success");
-      navigate("/dashboard");
+      navigate(returnTo.startsWith("/") ? returnTo : "/dashboard");
     } catch (err) {
       const msg = err instanceof AuthError ? err.message : err instanceof Error ? err.message : "Sign in failed";
       setLoginError(msg);
@@ -280,6 +293,13 @@ export default function RegisterPage() {
               Create account
             </button>
           </div>
+
+          {hireIntent ? (
+            <div className="register-hire-banner" role="status">
+              <strong>Register as a carrier to hire this driver</strong>
+              <p className="t-caption t-secondary">You can browse the marketplace without an account. Complete carrier registration to start the hiring process.</p>
+            </div>
+          ) : null}
 
           {mode === "login" ? (
             <div className="login-form-panel">

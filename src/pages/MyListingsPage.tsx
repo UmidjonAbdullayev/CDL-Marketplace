@@ -18,6 +18,8 @@ import { formatListingPublishError } from "../lib/listing-validation";
 import { fmtPrice } from "../lib/format";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { DriverExperienceFields } from "../components/listing/DriverExperienceFields";
+import { DriverPreferencesFields } from "../components/listing/DriverPreferencesFields";
+import { validateDriverPreferences } from "../lib/driver-preferences";
 import type { ScoreFlag } from "../types";
 
 function maskDriver(first: string, last: string) {
@@ -81,6 +83,10 @@ export default function MyListingsPage() {
           equipment: detail.equipment,
           routePref: detail.route_pref,
           driverType: detail.driver_type,
+          desiredWeeklyPay: detail.desired_weekly_pay ?? "",
+          weeksOutPreference: detail.weeks_out_preference ?? "",
+          maxDispatchFeePct: detail.max_dispatch_fee_pct ?? ("" as const),
+          companyExpectations: detail.company_expectations ?? "",
           notes: detail.notes ?? "",
           price: detail.price,
           listingDurationDays: Math.min(7, Math.max(1, detail.listing_duration_days ?? 7))
@@ -180,7 +186,25 @@ export default function MyListingsPage() {
                 </select>
               </div>
             </div>
-            <div className="form-group"><label>Notes (optional)</label>
+            <div className="listing-edit-prefs">
+              <h4 className="t-body" style={{ marginBottom: 8 }}>Driver preferences</h4>
+              <DriverPreferencesFields
+                driverType={form.driverType}
+                values={{
+                  desiredWeeklyPay: form.desiredWeeklyPay,
+                  weeksOutPreference: form.weeksOutPreference,
+                  maxDispatchFeePct: form.maxDispatchFeePct,
+                  companyExpectations: form.companyExpectations
+                }}
+                onChange={(patch) => {
+                  if (patch.desiredWeeklyPay !== undefined) form.desiredWeeklyPay = patch.desiredWeeklyPay;
+                  if (patch.weeksOutPreference !== undefined) form.weeksOutPreference = patch.weeksOutPreference;
+                  if (patch.maxDispatchFeePct !== undefined) form.maxDispatchFeePct = patch.maxDispatchFeePct;
+                  if (patch.companyExpectations !== undefined) form.companyExpectations = patch.companyExpectations;
+                }}
+              />
+            </div>
+            <div className="form-group"><label>Internal notes (optional)</label>
               <textarea rows={2} defaultValue={form.notes} onChange={(e) => { form.notes = e.target.value; }} />
             </div>
             <p className="t-caption t-secondary">
@@ -194,6 +218,19 @@ export default function MyListingsPage() {
             <button className="btn btn-primary" type="button" onClick={() => {
               if (!form.firstName.trim() || !form.lastName.trim() || !form.state || !form.phone.trim() || !form.availDate) {
                 showToast("Complete all required fields", "error");
+                return;
+              }
+              const prefErrs = validateDriverPreferences(
+                {
+                  desiredWeeklyPay: form.desiredWeeklyPay,
+                  weeksOutPreference: form.weeksOutPreference,
+                  maxDispatchFeePct: form.maxDispatchFeePct === "" ? null : form.maxDispatchFeePct,
+                  companyExpectations: form.companyExpectations
+                },
+                form.driverType
+              );
+              if (prefErrs.length) {
+                showToast(prefErrs[0], "error");
                 return;
               }
               const err = validateRecruiterListPrice(form.price, form.driverType);
@@ -219,6 +256,10 @@ export default function MyListingsPage() {
                   equipment: form.equipment,
                   routePref: form.routePref,
                   notes: form.notes.trim(),
+                  desiredWeeklyPay: form.desiredWeeklyPay.trim(),
+                  weeksOutPreference: form.weeksOutPreference.trim(),
+                  maxDispatchFeePct: form.maxDispatchFeePct === "" ? null : form.maxDispatchFeePct,
+                  companyExpectations: form.companyExpectations.trim() || undefined,
                   price: form.price,
                   driverType: form.driverType,
                   listingDurationDays: form.listingDurationDays,

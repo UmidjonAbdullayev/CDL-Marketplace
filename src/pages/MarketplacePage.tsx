@@ -10,10 +10,11 @@ import {
   Truck,
   User
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Pagination } from "../components/ui/Pagination";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
+import { DriverPreferencesPanel } from "../components/listing/DriverPreferencesPanel";
 import { DRIVER_TYPES, POSTED_WITHIN_OPTIONS } from "../lib/driver-types";
 import { PageHeader, ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
 import { driverInitials, fmtDate, fmtPostedAt, fmtRecruitingFee, maskName } from "../lib/format";
@@ -49,7 +50,7 @@ function activeFilterCount(
 
 export default function MarketplacePage() {
   const navigate = useNavigate();
-  const { sessionUser } = useApp();
+  const { sessionUser, isSignedIn } = useApp();
   const {
     marketplaceFilters: filters,
     setMarketplaceFilters: setFilters,
@@ -76,6 +77,15 @@ export default function MarketplacePage() {
 
   return (
     <div className="page active marketplace-page">
+      {!isSignedIn ? (
+        <div className="marketplace-guest-banner card">
+          <strong>Browse drivers free — register to hire</strong>
+          <p className="t-caption t-secondary">
+            Explore the full marketplace without an account. When you are ready to start hiring, create a carrier account.
+          </p>
+          <Link to="/register?intent=hire" className="btn btn-primary btn-sm">Register to Hire</Link>
+        </div>
+      ) : null}
       {carrierNeedsVerification ? (
         <div className="marketplace-verify-banner card">
           <strong>Verification required to view recruiting fees</strong>
@@ -292,6 +302,16 @@ export default function MarketplacePage() {
                       <span className="driver-meta-item"><Truck className="icon-sm" />{d.equip}</span>
                       <span className="driver-meta-item"><Calendar className="icon-sm" />Avail {fmtDate(d.avail)}</span>
                     </div>
+                    <DriverPreferencesPanel
+                      compact
+                      driverType={d.driverType}
+                      preferences={{
+                        desiredWeeklyPay: d.desiredWeeklyPay,
+                        weeksOutPreference: d.weeksOutPreference,
+                        maxDispatchFeePct: d.maxDispatchFeePct,
+                        companyExpectations: d.companyExpectations
+                      }}
+                    />
                     <div className={`driver-price-row${priceDisplay === "hidden" ? " driver-price-row--no-price" : ""}`}>
                       <div>
                         {priceDisplay === "show" ? (

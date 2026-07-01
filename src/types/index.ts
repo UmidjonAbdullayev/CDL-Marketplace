@@ -32,6 +32,10 @@ export interface DriverCard {
   featured: boolean;
   createdAt: string;
   isNew?: boolean;
+  desiredWeeklyPay?: string;
+  weeksOutPreference?: string;
+  maxDispatchFeePct?: number | null;
+  companyExpectations?: string;
 }
 
 export interface Driver {
@@ -57,12 +61,17 @@ export interface Driver {
   carrierPrice?: number | null;
   seller: string;
   sellerRating: number;
+  driverType?: DriverType;
   phone: string;
   email: string;
   cdlNum: string;
   docs: string[];
   notes: string;
   sellerCompanyId?: string;
+  desiredWeeklyPay?: string;
+  weeksOutPreference?: string;
+  maxDispatchFeePct?: number | null;
+  companyExpectations?: string;
 }
 
 export interface Paginated<T> {

@@ -36,6 +36,10 @@ type ListingCardRow = {
   featured: boolean;
   created_at: string;
   seller_company_id?: string;
+  desired_weekly_pay?: string | null;
+  weeks_out_preference?: string | null;
+  max_dispatch_fee_pct?: number | null;
+  company_expectations?: string | null;
   companies: { name: string; rating: number } | { name: string; rating: number }[] | null;
 };
 
@@ -47,6 +51,10 @@ type ListingDetailRow = ListingCardRow & {
   documents: string[];
   notes: string;
   route_pref: string;
+  desired_weekly_pay?: string | null;
+  weeks_out_preference?: string | null;
+  max_dispatch_fee_pct?: number | null;
+  company_expectations?: string | null;
   status: string;
   views: number;
   hot_score: number | null;
@@ -54,10 +62,10 @@ type ListingDetailRow = ListingCardRow & {
 };
 
 export const LISTING_CARD_SELECT =
-  "id, first_name, last_name, state, years_exp, months_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, seller_company_id, companies (name, rating)";
+  "id, first_name, last_name, state, years_exp, months_exp, cdl_class, equipment, available_date, score_flag, verified, price, platform_fee, net_payout, carrier_price, hot_score, route_pref, driver_type, featured, created_at, seller_company_id, desired_weekly_pay, weeks_out_preference, max_dispatch_fee_pct, company_expectations, companies (name, rating)";
 
 export const LISTING_DETAIL_SELECT =
-  `${LISTING_CARD_SELECT}, endorsements, phone, email, cdl_number, documents, notes, route_pref, status, views, hot_score, seller_company_id, assigned_admin_id`;
+  `${LISTING_CARD_SELECT}, endorsements, phone, email, cdl_number, documents, notes, status, views, hot_score, assigned_admin_id`;
 
 export function unwrapRelation<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
@@ -116,7 +124,11 @@ export function rowToCard(row: ListingCardRowWithHot, viewer: MarketplaceViewer 
     driverType: row.driver_type ?? "Owner Operator",
     featured: row.featured ?? false,
     createdAt,
-    isNew: Date.now() - new Date(createdAt).getTime() < NEW_LISTING_MS
+    isNew: Date.now() - new Date(createdAt).getTime() < NEW_LISTING_MS,
+    desiredWeeklyPay: row.desired_weekly_pay ?? undefined,
+    weeksOutPreference: row.weeks_out_preference ?? undefined,
+    maxDispatchFeePct: row.max_dispatch_fee_pct ?? null,
+    companyExpectations: row.company_expectations ?? undefined
   };
 }
 
@@ -984,6 +996,10 @@ export type NewListingInput = {
   equipment: string;
   routePref: string;
   notes: string;
+  desiredWeeklyPay: string;
+  weeksOutPreference: string;
+  maxDispatchFeePct?: number | null;
+  companyExpectations?: string;
   price: number;
   driverType: string;
   listingDurationDays?: number;
@@ -1007,6 +1023,10 @@ export type SellerListingDetail = {
   equipment: string;
   route_pref: string;
   notes: string | null;
+  desired_weekly_pay: string | null;
+  weeks_out_preference: string | null;
+  max_dispatch_fee_pct: number | null;
+  company_expectations: string | null;
   price: number;
   driver_type: string;
   listing_duration_days: number | null;
@@ -1030,6 +1050,10 @@ export type UpdateListingInput = {
   equipment: string;
   routePref: string;
   notes: string;
+  desiredWeeklyPay: string;
+  weeksOutPreference: string;
+  maxDispatchFeePct?: number | null;
+  companyExpectations?: string;
   price: number;
   driverType: string;
   listingDurationDays?: number;
@@ -1041,7 +1065,7 @@ export async function fetchSellerListingDetail(listingId: number): Promise<Selle
   const { data, error } = await supabase
     .from("driver_listings")
     .select(
-      "id, first_name, last_name, state, phone, email, cdl_class, cdl_number, years_exp, months_exp, score_flag, endorsements, available_date, equipment, route_pref, notes, price, driver_type, listing_duration_days, documents, status"
+      "id, first_name, last_name, state, phone, email, cdl_class, cdl_number, years_exp, months_exp, score_flag, endorsements, available_date, equipment, route_pref, notes, desired_weekly_pay, weeks_out_preference, max_dispatch_fee_pct, company_expectations, price, driver_type, listing_duration_days, documents, status"
     )
     .eq("id", listingId)
     .eq("seller_company_id", getActiveCompanyId())
@@ -1089,6 +1113,10 @@ export async function updateListing(
     equipment: input.equipment,
     route_pref: input.routePref,
     notes: input.notes,
+    desired_weekly_pay: input.desiredWeeklyPay.trim(),
+    weeks_out_preference: input.weeksOutPreference.trim(),
+    max_dispatch_fee_pct: input.maxDispatchFeePct ?? null,
+    company_expectations: input.companyExpectations?.trim() || null,
     price: pricing.listPrice,
     platform_fee: pricing.platformFee,
     net_payout: pricing.netPayout,
@@ -1150,6 +1178,10 @@ export async function createListing(input: NewListingInput): Promise<number> {
     equipment: input.equipment,
     route_pref: input.routePref,
     notes: input.notes,
+    desired_weekly_pay: input.desiredWeeklyPay.trim(),
+    weeks_out_preference: input.weeksOutPreference.trim(),
+    max_dispatch_fee_pct: input.maxDispatchFeePct ?? null,
+    company_expectations: input.companyExpectations?.trim() || null,
     price: pricing.listPrice,
     platform_fee: pricing.platformFee,
     net_payout: pricing.netPayout,
