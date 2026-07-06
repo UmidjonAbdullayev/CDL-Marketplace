@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { PlusCircle } from "lucide-react";
 import { Pagination } from "../components/ui/Pagination";
 import { PageHeader } from "../lib/badges";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
+import { submissionStatusBadgeClass, submissionStatusLabel } from "../lib/driver-submissions";
 import { DRIVER_TYPES } from "../lib/driver-types";
 import { US_STATES } from "../lib/us-states";
 import {
@@ -13,6 +16,7 @@ import {
   updateListingStatus,
   type SellerListingRow
 } from "../services/marketplace";
+import { fetchRecruiterSubmissionsPage, type DriverSubmissionListItem } from "../services/driverSubmissions";
 import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { formatListingPublishError } from "../lib/listing-validation";
 import { fmtPrice } from "../lib/format";
@@ -26,21 +30,10 @@ function maskDriver(first: string, last: string) {
   return `${first} ${last.charAt(0)}.`;
 }
 
-function statusBadge(status: string) {
-  const map: Record<string, string> = {
-    active: "badge-green",
-    pending: "badge-yellow",
-    paused: "badge-gray",
-    hiring: "badge-purple",
-    reserved: "badge-yellow",
-    sold: "badge-blue",
-    expired: "badge-red"
-  };
-  const label = status === "hiring" ? "Hiring in progress" : status.charAt(0).toUpperCase() + status.slice(1);
-  return <span className={`badge ${map[status] ?? "badge-gray"}`}>{label}</span>;
-}
+type TopSection = "listed" | "sent";
 
 export default function MyListingsPage() {
+  const navigate = useNavigate();
   const { openModal, closeModal, showToast } = useApp();
   const {
     listingsTab: tab,
@@ -56,7 +49,45 @@ export default function MyListingsPage() {
     refreshMyListings
   } = useExchangeData();
 
+  const [topSection, setTopSection] = useState<TopSection>("listed");
+  const [sentPage, setSentPage] = useState(1);
+  const [sentRows, setSentRows] = useState<DriverSubmissionListItem[]>([]);
+  const [sentTotal, setSentTotal] = useState(0);
+  const [sentTotalPages, setSentTotalPages] = useState(1);
+  const [sentLoading, setSentLoading] = useState(false);
+
   const [editLoading, setEditLoading] = useState(false);
+
+  function statusBadge(status: string) {
+    const map: Record<string, string> = {
+      active: "badge-green",
+      pending: "badge-yellow",
+      paused: "badge-gray",
+      hiring: "badge-purple",
+      reserved: "badge-yellow",
+      sold: "badge-blue",
+      expired: "badge-red"
+    };
+    const label = status === "hiring" ? "Hiring in progress" : status.charAt(0).toUpperCase() + status.slice(1);
+    return <span className={`badge ${map[status] ?? "badge-gray"}`}>{label}</span>;
+  }
+
+  useEffect(() => {
+    if (topSection !== "sent") return;
+    setSentLoading(true);
+    void fetchRecruiterSubmissionsPage({ page: sentPage, pageSize: DEFAULT_PAGE_SIZE })
+      .then((result) => {
+        setSentRows(result.items);
+        setSentTotal(result.total);
+        setSentTotalPages(result.totalPages);
+      })
+      .catch(() => {
+        setSentRows([]);
+        setSentTotal(0);
+        setSentTotalPages(1);
+      })
+      .finally(() => setSentLoading(false));
+  }, [topSection, sentPage]);
 
   const editListing = (row: SellerListingRow) => {
     setEditLoading(true);
@@ -366,18 +397,91 @@ export default function MyListingsPage() {
 
   return (
     <div className="page active">
-      <PageHeader title="My Listings" desc="Manage your active, reserved, sold, and expired driver listings." />
-      {refreshing ? <div className="t-caption t-secondary" style={{ marginBottom: 8 }}>Updating...</div> : null}
-      <div className="tabs" id="listingTabs">
-        <button type="button" className={`tab ${tab === "active" ? "active" : ""}`} onClick={() => { setTab("active"); setPage(1); }}>Active ({counts.active})</button>
-        <button type="button" className={`tab ${tab === "reserved" ? "active" : ""}`} onClick={() => { setTab("reserved"); setPage(1); }}>In Hiring ({counts.reserved})</button>
-        <button type="button" className={`tab ${tab === "sold" ? "active" : ""}`} onClick={() => { setTab("sold"); setPage(1); }}>Sold ({counts.sold})</button>
-        <button type="button" className={`tab ${tab === "expired" ? "active" : ""}`} onClick={() => { setTab("expired"); setPage(1); }}>Expired ({counts.expired})</button>
+      <PageHeader
+        title="My Listings"
+        desc="Manage listed drivers and track drivers you've sent to carriers."
+        row
+        actions={(
+          <button type="button" className="btn btn-primary" onClick={() => navigate("/sell")}>
+            <PlusCircle className="icon-sm" /> List Driver
+          </button>
+        )}
+      />
+      {refreshing && topSection === "listed" ? <div className="t-caption t-secondary" style={{ marginBottom: 8 }}>Updating...</div> : null}
+
+      <div className="tabs listings-top-tabs">
+        <button type="button" className={`tab ${topSection === "listed" ? "active" : ""}`} onClick={() => setTopSection("listed")}>
+          Listed Drivers
+        </button>
+        <button type="button" className={`tab ${topSection === "sent" ? "active" : ""}`} onClick={() => { setTopSection("sent"); setSentPage(1); }}>
+          Sent Drivers
+        </button>
       </div>
-      <div className={`tab-panel ${tab === "active" ? "active" : ""}`}>{renderTable(true)}</div>
-      <div className={`tab-panel ${tab === "reserved" ? "active" : ""}`}>{renderTable(false)}</div>
-      <div className={`tab-panel ${tab === "sold" ? "active" : ""}`}>{renderTable(false)}</div>
-      <div className={`tab-panel ${tab === "expired" ? "active" : ""}`}>{renderTable(false)}</div>
+
+      {topSection === "listed" ? (
+        <>
+          <div className="tabs" id="listingTabs">
+            <button type="button" className={`tab ${tab === "active" ? "active" : ""}`} onClick={() => { setTab("active"); setPage(1); }}>Active ({counts.active})</button>
+            <button type="button" className={`tab ${tab === "reserved" ? "active" : ""}`} onClick={() => { setTab("reserved"); setPage(1); }}>In Hiring ({counts.reserved})</button>
+            <button type="button" className={`tab ${tab === "sold" ? "active" : ""}`} onClick={() => { setTab("sold"); setPage(1); }}>Sold ({counts.sold})</button>
+            <button type="button" className={`tab ${tab === "expired" ? "active" : ""}`} onClick={() => { setTab("expired"); setPage(1); }}>Expired ({counts.expired})</button>
+          </div>
+          <div className={`tab-panel ${tab === "active" ? "active" : ""}`}>{renderTable(true)}</div>
+          <div className={`tab-panel ${tab === "reserved" ? "active" : ""}`}>{renderTable(false)}</div>
+          <div className={`tab-panel ${tab === "sold" ? "active" : ""}`}>{renderTable(false)}</div>
+          <div className={`tab-panel ${tab === "expired" ? "active" : ""}`}>{renderTable(false)}</div>
+        </>
+      ) : (
+        <>
+          <div className="card">
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Driver</th>
+                    <th>Carrier</th>
+                    <th>State</th>
+                    <th>Equipment</th>
+                    <th>Status</th>
+                    <th>Last update</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sentLoading && sentRows.length === 0 ? (
+                    <tr><td colSpan={6} className="t-secondary">Loading sent drivers...</td></tr>
+                  ) : sentRows.length === 0 ? (
+                    <tr><td colSpan={6} className="t-secondary">No drivers sent yet. Use Find Carriers to send drivers to hiring companies.</td></tr>
+                  ) : sentRows.map((r) => (
+                    <tr
+                      key={r.id}
+                      className="clickable-row"
+                      onClick={() => navigate(`/submissions/${r.id}`)}
+                      role="link"
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === "Enter" && navigate(`/submissions/${r.id}`)}
+                    >
+                      <td>{maskDriver(r.driver_first_name, r.driver_last_name)}</td>
+                      <td>{r.carrier_name}</td>
+                      <td>{r.driver_state}</td>
+                      <td>{r.driver_equipment}</td>
+                      <td>
+                        <span className={`badge ${submissionStatusBadgeClass(r.status)}`}>
+                          {submissionStatusLabel(r.status)}
+                        </span>
+                        {r.status_comment ? (
+                          <div className="t-caption t-secondary">{r.status_comment}</div>
+                        ) : null}
+                      </td>
+                      <td className="t-caption t-secondary">{new Date(r.updated_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <Pagination page={sentPage} totalPages={sentTotalPages} total={sentTotal} pageSize={DEFAULT_PAGE_SIZE} loading={sentLoading} onPageChange={setSentPage} />
+        </>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { enrichMessagesWithAttachmentUrls, getAttachmentViewUrl, uploadChatAttachment } from "./chatAttachments";
 import { fetchAdminProfile } from "./adminProfiles";
 import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation } from "./marketplace";
-import { assertCanStartHiring, resolveHireLimit } from "./platformLimits";
+import { assertCanStartHiring, isPlatformOperationsCompany, resolveHireLimit } from "./platformLimits";
 import { assertWalletCanCoverDeal, deductWalletBalance } from "./wallet";
 import type { Driver, DriverCard } from "../types";
 
@@ -143,14 +143,21 @@ export async function fetchListingHireAvailability(listingId: number): Promise<{
   }
 
   try {
-    const hireLimit = await resolveHireLimit(myCompanyId);
-    if (hireLimit.used >= hireLimit.limit) {
+    const [hireLimit, isPlatformOps] = await Promise.all([
+      resolveHireLimit(myCompanyId),
+      isPlatformOperationsCompany(myCompanyId)
+    ]);
+    if (!isPlatformOps && hireLimit.used >= hireLimit.limit) {
       return {
         available: false,
         reason:
-          hireLimit.tier === "starter"
-            ? "Your account is limited to one active hire until your first deal is completed. Finish your current hiring process to continue."
-            : `You have ${hireLimit.used} active hires (limit ${hireLimit.limit}). Complete or cancel a deal before starting another.`
+          hireLimit.lifetimeDealCap
+            ? hireLimit.carrierStatus === "pending_payment"
+              ? "Your payment is still being verified. Until your plan is activated you can only have one hire (active or completed). Complete Whop checkout or wait for manager confirmation."
+              : "Free preview accounts are limited to one hire total (active or completed). Upgrade to a paid plan on Pricing to hire more drivers."
+            : hireLimit.tier === "starter"
+              ? "Your account is limited to one active hire until your first deal is completed. Finish your current hiring process to continue."
+              : `You have ${hireLimit.used} active hires (limit ${hireLimit.limit}). Complete or cancel a deal before starting another.`
       };
     }
   } catch {
@@ -283,7 +290,10 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
 
   const dealAmount = listing.carrier_price ?? listing.price;
   const buyerCompanyId = getActiveCompanyId();
-  await assertWalletCanCoverDeal(buyerCompanyId, dealAmount);
+  const platformOps = await isPlatformOperationsCompany(buyerCompanyId);
+  if (!platformOps) {
+    await assertWalletCanCoverDeal(buyerCompanyId, dealAmount);
+  }
 
   const id = dealId();
   const now = new Date().toISOString();
@@ -310,7 +320,9 @@ export async function startHiringProcess(listingId: number, buyerSignerName: str
   }
 
   try {
-    await deductWalletBalance(buyerCompanyId, dealAmount);
+    if (!platformOps) {
+      await deductWalletBalance(buyerCompanyId, dealAmount);
+    }
   } catch (err) {
     await supabase.from("deals").delete().eq("id", id);
     await supabase

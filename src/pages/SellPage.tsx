@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, Paperclip, UploadCloud } from "lucide-react";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { isSellerNav } from "../lib/account-capabilities";
 import { PageHeader } from "../lib/badges";
 import { fmtPrice } from "../lib/format";
 import { DRIVER_TYPES } from "../lib/driver-types";
@@ -26,7 +27,7 @@ import type { ScoreFlag } from "../types";
 
 export default function SellPage() {
   const navigate = useNavigate();
-  const { showToast } = useApp();
+  const { showToast, sessionUser } = useApp();
   const [step, setStep] = useState(1);
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -86,6 +87,12 @@ export default function SellPage() {
   useEffect(() => {
     void resolveListingLimit().then((snap) => setLimitNote(limitHint(snap))).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (sessionUser && !isSellerNav(sessionUser)) {
+      navigate("/marketplace", { replace: true });
+    }
+  }, [sessionUser, navigate]);
 
   const onDocumentChosen = async (file: File) => {
     setUploadingDoc(true);

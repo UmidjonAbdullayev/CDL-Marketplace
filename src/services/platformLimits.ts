@@ -136,14 +136,65 @@ function usesLifetimeDealCap(status: RegistrationStatus | null, plan: CarrierPla
   return false;
 }
 
+/** Platform admin / operations accounts are not subject to hire or Whop billing limits. */
+export async function isPlatformOperationsCompany(companyId: string): Promise<boolean> {
+  if (!supabase || !companyId) return false;
+
+  const [{ data: company }, { data: accounts }] = await Promise.all([
+    supabase.from("companies").select("company_type").eq("id", companyId).maybeSingle(),
+    supabase
+      .from("registration_accounts")
+      .select("is_admin, admin_role, profile_data")
+      .eq("company_id", companyId)
+  ]);
+
+  if (company?.company_type === "platform") return true;
+
+  for (const account of accounts ?? []) {
+    const role = account.admin_role ?? "none";
+    if (account.is_admin || role === "admin" || role === "manager") return true;
+    const profile = (account.profile_data ?? {}) as Record<string, string>;
+    const mc = String(profile.mcNumber ?? "").trim().toUpperCase();
+    if (mc === "PLATFORM" || mc.startsWith("MC-PLATFORM")) return true;
+  }
+
+  return false;
+}
+
+function unlimitedHireSnapshot(
+  buyerCompanyId: string,
+  activeHires: number,
+  completedDeals: number,
+  overrides: { max_active_hires: number | null; max_active_listings: number | null }
+): CompanyLimitSnapshot {
+  return {
+    companyId: buyerCompanyId,
+    role: "carrier",
+    tier: "custom",
+    limit: 999,
+    used: activeHires,
+    completedDeals,
+    customMaxHires: overrides.max_active_hires,
+    customMaxListings: overrides.max_active_listings,
+    carrierPlan: "pro_fleet",
+    carrierStatus: "active",
+    lifetimeDealCap: false
+  };
+}
+
 export async function resolveHireLimit(buyerCompanyId: string): Promise<CompanyLimitSnapshot> {
-  const [overrides, activeHires, completedDeals, totalDeals, billing] = await Promise.all([
+  const [overrides, activeHires, completedDeals, totalDeals, billing, isPlatformOps] = await Promise.all([
     fetchCompanyLimitOverrides(buyerCompanyId),
     countActiveHires(buyerCompanyId),
     countCompletedDeals(buyerCompanyId, "buyer"),
     countTotalBuyerDeals(buyerCompanyId),
-    fetchCarrierBillingByCompany(buyerCompanyId)
+    fetchCarrierBillingByCompany(buyerCompanyId),
+    isPlatformOperationsCompany(buyerCompanyId)
   ]);
+
+  if (isPlatformOps) {
+    return unlimitedHireSnapshot(buyerCompanyId, activeHires, completedDeals, overrides);
+  }
 
   const plan = billing.plan ?? "free";
   const status = billing.status;

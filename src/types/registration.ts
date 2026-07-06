@@ -29,6 +29,14 @@ export type CarrierProfile = {
   state: string;
   zip: string;
   about?: string;
+  /** Weekly pay range offered to drivers, e.g. "$1,800–$2,400/week" */
+  driverPayRange?: string;
+  /** Home time policy, e.g. "Home every 2 weeks" */
+  homeTimePolicy?: string;
+  /** Primary lanes / operating regions */
+  operatingRegions?: string;
+  /** Additional benefits or perks */
+  benefitsOffered?: string;
 };
 
 export type AgencyProfile = {
