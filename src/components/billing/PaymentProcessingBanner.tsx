@@ -6,10 +6,11 @@ import type { CarrierPlanId } from "../../types/registration";
 type Props = {
   plan: CarrierPlanId | null;
   status: string;
+  isPlatformStaff?: boolean;
 };
 
-export function PaymentProcessingBanner({ plan, status }: Props) {
-  if (status !== "pending_payment" || !plan || plan === "free") return null;
+export function PaymentProcessingBanner({ plan, status, isPlatformStaff = false }: Props) {
+  if (isPlatformStaff || status !== "pending_payment" || !plan || plan === "free") return null;
 
   const checkoutUrl = getWhopCheckoutUrl(plan);
 

@@ -10,7 +10,6 @@ import {
   Handshake,
   LayoutDashboard,
   MessageSquare,
-  PlusCircle,
   Settings,
   ShieldCheck,
   Store,
@@ -39,7 +38,7 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/marketplace", label: "Marketplace", icon: Store },
-      { to: "/sell", label: "Sell / List Driver", icon: PlusCircle }
+      { to: "/find-carriers", label: "Find Carriers", icon: Building2, sellerOnly: true }
     ]
   },
   {

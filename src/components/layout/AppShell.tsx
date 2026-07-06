@@ -10,7 +10,7 @@ import { WalletDepositPendingBanner } from "../billing/WalletDepositPendingBanne
 import { PublicTopbar } from "./PublicTopbar";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
-import { canActAsCarrier, isPlatformManager, isSellerNav } from "../../lib/account-capabilities";
+import { canActAsCarrier, isPlatformManager, isPlatformStaff, isSellerNav } from "../../lib/account-capabilities";
 import { fmtPrice } from "../../lib/format";
 import { carrierPlanLabel } from "../../lib/carrier-plans";
 import type { CarrierPlanId } from "../../types/registration";
@@ -135,7 +135,11 @@ export function AppShell() {
         <div className="content" id="content">
           {canActAsCarrier(sessionUser) && sessionUser ? (
             <div className="content-banner-wrap">
-              <PaymentProcessingBanner plan={sessionUser.selectedPlan} status={sessionUser.status} />
+              <PaymentProcessingBanner
+                plan={sessionUser.selectedPlan}
+                status={sessionUser.status}
+                isPlatformStaff={isPlatformStaff(sessionUser)}
+              />
               <WalletDepositPendingBanner />
             </div>
           ) : null}

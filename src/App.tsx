@@ -6,6 +6,7 @@ import { AdminGuard } from "./components/layout/AdminGuard";
 import DashboardPage from "./pages/DashboardPage";
 import MarketplacePage from "./pages/MarketplacePage";
 import DriverDetailPage from "./pages/DriverDetailPage";
+import FindCarriersPage from "./pages/FindCarriersPage";
 import SellPage from "./pages/SellPage";
 import MyListingsPage from "./pages/MyListingsPage";
 import DealsPage from "./pages/DealsPage";
@@ -19,6 +20,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
 import ContractPage from "./pages/ContractPage";
 import DealWorkspacePage from "./pages/DealWorkspacePage";
+import SubmissionWorkspacePage from "./pages/SubmissionWorkspacePage";
 import OngoingDealsPage from "./pages/OngoingDealsPage";
 import RegisterPage from "./pages/RegisterPage";
 import RegistrationSuccessPage from "./pages/RegistrationSuccessPage";
@@ -36,9 +38,11 @@ export default function App() {
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/marketplace" element={<MarketplacePage />} />
+            <Route path="/find-carriers" element={<FindCarriersPage />} />
             <Route path="/driver/:id" element={<DriverDetailPage />} />
             <Route path="/hiring/contract/:listingId" element={<ContractPage />} />
             <Route path="/deals/:dealId" element={<DealWorkspacePage />} />
+            <Route path="/submissions/:submissionId" element={<SubmissionWorkspacePage />} />
             <Route path="/sell" element={<SellPage />} />
             <Route path="/my-listings" element={<MyListingsPage />} />
             <Route path="/ongoing-deals" element={<OngoingDealsPage />} />
