@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Building2, Clock, User } from "lucide-react";
+import { ArrowLeft, Building2, Clock, Eye, User } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MessengerPanel, type MessengerBubble } from "../components/chat/MessengerPanel";
 import { useApp } from "../context/AppContext";
@@ -16,12 +16,14 @@ import { isSupabaseConfigured } from "../lib/supabase";
 import {
   fetchSubmissionMessages,
   fetchSubmissionWorkspace,
+  markSubmissionViewed,
   sendSubmissionMessage,
   subscribeSubmissionMessages,
   subscribeSubmissionWorkspace,
   updateSubmissionStatus,
   type SubmissionWorkspace
 } from "../services/driverSubmissions";
+import { DriverApplicationWorkspacePanel } from "../components/driver-applications/DriverApplicationWorkspacePanel";
 
 function formatMsgTime(iso: string) {
   const d = new Date(iso);
@@ -56,7 +58,7 @@ export default function SubmissionWorkspacePage() {
   const channelPartyId = isCarrier ? submission?.carrier_company_id : submission?.recruiter_company_id;
 
   const load = useCallback(async () => {
-    if (!submissionId) return;
+    if (!submissionId || !myCompanyId) return;
     try {
       if (isSupabaseConfigured) {
         const ws = await fetchSubmissionWorkspace(submissionId);
@@ -64,13 +66,22 @@ export default function SubmissionWorkspacePage() {
         if (ws?.submission.status) {
           setStatusDraft(ws.submission.status as DriverSubmissionStatus);
         }
+        if (ws?.submission) {
+          const role = ws.submission.recruiter_company_id === myCompanyId ? "recruiter" : "carrier";
+          if (
+            (role === "recruiter" && ws.submission.recruiter_company_id === myCompanyId) ||
+            (role === "carrier" && ws.submission.carrier_company_id === myCompanyId)
+          ) {
+            await markSubmissionViewed(submissionId, myCompanyId, role);
+          }
+        }
       }
     } catch {
       showToast("Failed to load submission", "error");
     } finally {
       setLoading(false);
     }
-  }, [submissionId, showToast]);
+  }, [submissionId, myCompanyId, showToast]);
 
   useEffect(() => {
     void load();
@@ -173,8 +184,8 @@ export default function SubmissionWorkspacePage() {
     return (
       <div className="page active">
         <p className="t-secondary">Submission not found.</p>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate("/my-listings")}>
-          Back to My Listings
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate("/my-drivers")}>
+          Back to My Drivers
         </button>
       </div>
     );
@@ -185,13 +196,13 @@ export default function SubmissionWorkspacePage() {
   const counterpartyName = isRecruiter ? workspace.carrierName : workspace.recruiterName;
 
   return (
-    <div className="page active submission-workspace-page">
+    <div className={`page active submission-workspace-page ${isCarrier ? "submission-workspace-page--carrier" : ""}`}>
       <div className="deal-workspace-top">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(isRecruiter ? "/my-listings" : "/dashboard")}>
-          <ArrowLeft className="icon-sm" /> Back
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate("/my-drivers")}>
+          <ArrowLeft className="icon-sm" /> Back to My Drivers
         </button>
         <div className="deal-workspace-title">
-          <h2>Sent Driver · {driver ? `${driver.first_name} ${driver.last_name.charAt(0)}.` : "Driver"}</h2>
+          <h2>{isCarrier ? "Review sent driver" : "Sent driver"} · {driver ? `${driver.first_name} ${driver.last_name.charAt(0)}.` : "Driver"}</h2>
           <div className="deal-workspace-sub">
             <Building2 className="icon-sm" /> {counterpartyName}
             <span className={`badge ${submissionStatusBadgeClass(submission.status)}`}>
@@ -200,6 +211,29 @@ export default function SubmissionWorkspacePage() {
           </div>
         </div>
       </div>
+
+      {canUpdateStatus ? (
+        <div className="card submission-carrier-actions-banner">
+          <h3>Update driver hiring stage</h3>
+          <p className="t-caption t-secondary">Move this driver through your hiring pipeline. The recruiter is notified on every update.</p>
+          <div className="submission-carrier-actions-row">
+            <select value={statusDraft} onChange={(e) => setStatusDraft(e.target.value as DriverSubmissionStatus)}>
+              {CARRIER_UPDATABLE_STATUSES.map((s) => (
+                <option key={s} value={s}>{submissionStatusLabel(s)}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              placeholder={statusDraft === "refused" ? "Reason required if refusing" : "Add a note (optional)"}
+            />
+            <button type="button" className="btn btn-primary btn-sm" disabled={updating} onClick={() => void applyStatus()}>
+              {updating ? "Saving..." : "Update stage"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="submission-workspace-layout">
         <div className="submission-workspace-main">
@@ -229,12 +263,20 @@ export default function SubmissionWorkspacePage() {
                 <strong>Latest note:</strong> {submission.status_comment}
               </div>
             ) : null}
+            {isRecruiter ? (
+              <div className="submission-carrier-viewed">
+                <Eye className="icon-sm" />
+                {submission.carrier_last_viewed_at
+                  ? `Carrier last opened this case on ${fmtDate(submission.carrier_last_viewed_at)}`
+                  : "Carrier has not opened this case yet"}
+              </div>
+            ) : null}
           </div>
 
           {canUpdateStatus ? (
-            <div className="card">
-              <h3>Update hiring status</h3>
-              <p className="t-caption t-secondary">Carriers can update the pipeline and add comments (required when refusing).</p>
+            <div className="card submission-carrier-detail-panel">
+              <h3>Detailed status update</h3>
+              <p className="t-caption t-secondary">Add more context when moving stages (required when refusing).</p>
               <div className="form-row">
                 <div className="form-group">
                   <label>Status</label>
@@ -270,6 +312,17 @@ export default function SubmissionWorkspacePage() {
               </button>
             </div>
           ) : null}
+
+          <div className="card">
+            <h3>Driver application</h3>
+            <DriverApplicationWorkspacePanel
+              submissionId={submission.id}
+              listingId={submission.listing_id ?? undefined}
+              carrierCompanyId={submission.carrier_company_id}
+              canManage={isRecruiter || isCarrier}
+              compact
+            />
+          </div>
 
           <div className="card">
             <h3>Activity log</h3>

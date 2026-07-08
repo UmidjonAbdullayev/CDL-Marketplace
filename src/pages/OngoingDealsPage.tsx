@@ -6,11 +6,9 @@ import { useExchangeData } from "../context/ExchangeDataContext";
 import { PageHeader } from "../lib/badges";
 import { statusBadgeClass } from "../lib/hiring";
 import { fmtRecruitingFee, fullName } from "../lib/format";
-import { isPlatformStaff, canActAsCarrier } from "../lib/account-capabilities";
-import { submissionStatusBadgeClass, submissionStatusLabel } from "../lib/driver-submissions";
+import { isPlatformStaff } from "../lib/account-capabilities";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { fetchOngoingDeals, type HiringDealRow } from "../services/hiring";
-import { fetchCarrierSubmissionsPage, type DriverSubmissionListItem } from "../services/driverSubmissions";
 import { markOngoingDealsViewed } from "../services/dealViews";
 import { usePlatformRealtime } from "../hooks/usePlatformRealtime";
 
@@ -48,28 +46,21 @@ export default function OngoingDealsPage() {
   const { sessionUser } = useApp();
   const { refreshNotifications } = useExchangeData();
   const [deals, setDeals] = useState<HiringDealRow[]>([]);
-  const [submissions, setSubmissions] = useState<DriverSubmissionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const companyId = sessionUser?.companyId ?? "";
   const platformWide = isPlatformStaff(sessionUser);
-  const isCarrier = canActAsCarrier(sessionUser);
 
   useEffect(() => {
     void (async () => {
       try {
         if (isSupabaseConfigured && companyId) {
-          const [dealRows, submissionRows] = await Promise.all([
-            fetchOngoingDeals({ platformWide }),
-            isCarrier ? fetchCarrierSubmissionsPage({ page: 1, pageSize: 20 }).then((r) => r.items) : Promise.resolve([])
-          ]);
-          setDeals(dealRows);
-          setSubmissions(submissionRows);
+          setDeals(await fetchOngoingDeals({ platformWide }));
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, [companyId, platformWide, isCarrier]);
+  }, [companyId, platformWide]);
 
   useEffect(() => {
     if (!companyId || loading || !deals.length) return;
@@ -80,16 +71,11 @@ export default function OngoingDealsPage() {
   const reloadDeals = useCallback(async () => {
     if (!isSupabaseConfigured || !companyId) return;
     try {
-      const [dealRows, submissionRows] = await Promise.all([
-        fetchOngoingDeals({ platformWide }),
-        isCarrier ? fetchCarrierSubmissionsPage({ page: 1, pageSize: 20 }).then((r) => r.items) : Promise.resolve([])
-      ]);
-      setDeals(dealRows);
-      setSubmissions(submissionRows);
+      setDeals(await fetchOngoingDeals({ platformWide }));
     } catch {
       /* background refresh */
     }
-  }, [companyId, platformWide, isCarrier]);
+  }, [companyId, platformWide]);
 
   usePlatformRealtime(
     useCallback((topics) => {
@@ -104,46 +90,6 @@ export default function OngoingDealsPage() {
         title="Ongoing Deals"
         desc="Track active recruiting engagements. Buyers and sellers share the same workspace for each hiring process."
       />
-
-      {isCarrier && submissions.length > 0 ? (
-        <div style={{ marginBottom: 24 }}>
-          <h3 style={{ marginBottom: 12 }}>Incoming driver submissions</h3>
-          <p className="t-caption t-secondary" style={{ marginBottom: 12 }}>
-            Drivers sent by recruiters — open a submission to review, update hiring status, and chat.
-          </p>
-          <div className="ongoing-deals-list">
-            {submissions.map((sub) => (
-              <button
-                key={sub.id}
-                type="button"
-                className="ongoing-deal-row card"
-                onClick={() => navigate(`/submissions/${sub.id}`)}
-              >
-                <div className="ongoing-deal-main">
-                  <div className="ongoing-deal-avatar"><User className="icon-md" /></div>
-                  <div className="ongoing-deal-info">
-                    <div className="ongoing-deal-title">
-                      {sub.driver_first_name} {sub.driver_last_name.charAt(0)}.
-                    </div>
-                    <div className="ongoing-deal-meta t-secondary">
-                      {sub.driver_state} · {sub.driver_equipment} · from {sub.recruiter_name}
-                    </div>
-                  </div>
-                </div>
-                <div className="ongoing-deal-side">
-                  <span className={`badge ${submissionStatusBadgeClass(sub.status)}`}>
-                    {submissionStatusLabel(sub.status)}
-                  </span>
-                  {sub.status_comment ? (
-                    <div className="t-caption t-secondary">{sub.status_comment}</div>
-                  ) : null}
-                </div>
-                <ChevronRight className="icon-md ongoing-deal-chevron" />
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       {loading ? (
         <p className="t-secondary">Loading ongoing deals...</p>

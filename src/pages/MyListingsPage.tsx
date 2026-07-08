@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { PlusCircle } from "lucide-react";
+import { ChevronRight, PlusCircle, User } from "lucide-react";
 import { Pagination } from "../components/ui/Pagination";
+import { SentDriverCard } from "../components/drivers/SentDriverCard";
 import { PageHeader } from "../lib/badges";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
-import { submissionStatusBadgeClass, submissionStatusLabel } from "../lib/driver-submissions";
+import { canActAsCarrier, isSellerNav } from "../lib/account-capabilities";
 import { DRIVER_TYPES } from "../lib/driver-types";
 import { US_STATES } from "../lib/us-states";
 import {
@@ -13,16 +14,20 @@ import {
   expireListing,
   fetchSellerListingDetail,
   updateListing,
+  publishDraftListing,
   updateListingStatus,
   type SellerListingRow
 } from "../services/marketplace";
-import { fetchRecruiterSubmissionsPage, type DriverSubmissionListItem } from "../services/driverSubmissions";
+import { fetchCarrierMarketplaceDrivers, type CarrierMarketplaceDriverRow } from "../services/hiring";
+import { fetchCarrierSubmissionsPage, fetchRecruiterSubmissionsPage, type DriverSubmissionListItem } from "../services/driverSubmissions";
 import { maxRecruiterPrice, validateRecruiterListPrice } from "../lib/listing-pricing";
 import { formatListingPublishError } from "../lib/listing-validation";
-import { fmtPrice } from "../lib/format";
+import { fmtDate, fmtRecruitingFee, fmtPrice } from "../lib/format";
+import { statusBadgeClass } from "../lib/hiring";
 import { invalidateDataViews } from "../lib/dataInvalidation";
 import { DriverExperienceFields } from "../components/listing/DriverExperienceFields";
 import { DriverPreferencesFields } from "../components/listing/DriverPreferencesFields";
+import { DriverIntakeApplicationsPanel } from "../components/driver-applications/DriverIntakeApplicationsPanel";
 import { validateDriverPreferences } from "../lib/driver-preferences";
 import type { ScoreFlag } from "../types";
 
@@ -30,11 +35,15 @@ function maskDriver(first: string, last: string) {
   return `${first} ${last.charAt(0)}.`;
 }
 
-type TopSection = "listed" | "sent";
+type RecruiterSection = "listed" | "applications" | "sent";
+type CarrierSection = "marketplace" | "applications" | "sent";
+type ApplicationSubTab = "drafts" | "intake";
 
 export default function MyListingsPage() {
   const navigate = useNavigate();
-  const { openModal, closeModal, showToast } = useApp();
+  const { openModal, closeModal, showToast, sessionUser } = useApp();
+  const isRecruiter = isSellerNav(sessionUser);
+  const isCarrier = canActAsCarrier(sessionUser) && !isRecruiter;
   const {
     listingsTab: tab,
     setListingsTab: setTab,
@@ -49,17 +58,32 @@ export default function MyListingsPage() {
     refreshMyListings
   } = useExchangeData();
 
-  const [topSection, setTopSection] = useState<TopSection>("listed");
+  const [recruiterSection, setRecruiterSection] = useState<RecruiterSection>("listed");
+  const [carrierSection, setCarrierSection] = useState<CarrierSection>("marketplace");
+  const [applicationSubTab, setApplicationSubTab] = useState<ApplicationSubTab>("drafts");
   const [sentPage, setSentPage] = useState(1);
   const [sentRows, setSentRows] = useState<DriverSubmissionListItem[]>([]);
   const [sentTotal, setSentTotal] = useState(0);
   const [sentTotalPages, setSentTotalPages] = useState(1);
   const [sentLoading, setSentLoading] = useState(false);
 
+  const [marketplacePage, setMarketplacePage] = useState(1);
+  const [marketplaceRows, setMarketplaceRows] = useState<CarrierMarketplaceDriverRow[]>([]);
+  const [marketplaceTotal, setMarketplaceTotal] = useState(0);
+  const [marketplaceTotalPages, setMarketplaceTotalPages] = useState(1);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(false);
+
+  const topSection = isRecruiter ? recruiterSection : carrierSection;
+  const setTopSection = (section: string) => {
+    if (isRecruiter) setRecruiterSection(section as RecruiterSection);
+    else setCarrierSection(section as CarrierSection);
+  };
+
   const [editLoading, setEditLoading] = useState(false);
 
   function statusBadge(status: string) {
     const map: Record<string, string> = {
+      draft: "badge-gray",
       active: "badge-green",
       pending: "badge-yellow",
       paused: "badge-gray",
@@ -75,7 +99,8 @@ export default function MyListingsPage() {
   useEffect(() => {
     if (topSection !== "sent") return;
     setSentLoading(true);
-    void fetchRecruiterSubmissionsPage({ page: sentPage, pageSize: DEFAULT_PAGE_SIZE })
+    const fetcher = isRecruiter ? fetchRecruiterSubmissionsPage : fetchCarrierSubmissionsPage;
+    void fetcher({ page: sentPage, pageSize: DEFAULT_PAGE_SIZE })
       .then((result) => {
         setSentRows(result.items);
         setSentTotal(result.total);
@@ -87,7 +112,45 @@ export default function MyListingsPage() {
         setSentTotalPages(1);
       })
       .finally(() => setSentLoading(false));
-  }, [topSection, sentPage]);
+  }, [topSection, sentPage, isRecruiter]);
+
+  useEffect(() => {
+    if (!isCarrier || topSection !== "marketplace") return;
+    setMarketplaceLoading(true);
+    void fetchCarrierMarketplaceDrivers({ page: marketplacePage, pageSize: DEFAULT_PAGE_SIZE })
+      .then((result) => {
+        setMarketplaceRows(result.items);
+        setMarketplaceTotal(result.total);
+        setMarketplaceTotalPages(result.totalPages);
+      })
+      .catch(() => {
+        setMarketplaceRows([]);
+        setMarketplaceTotal(0);
+        setMarketplaceTotalPages(1);
+      })
+      .finally(() => setMarketplaceLoading(false));
+  }, [isCarrier, topSection, marketplacePage]);
+
+  useEffect(() => {
+    if (isRecruiter && recruiterSection === "applications" && applicationSubTab === "drafts") {
+      setTab("draft");
+      setPage(1);
+    }
+  }, [isRecruiter, recruiterSection, applicationSubTab, setTab, setPage]);
+
+  const sendToCarrier = (listingId: number) => {
+    navigate("/find-carriers", { state: { listingId } });
+  };
+
+  const postToMarketplace = (row: SellerListingRow) => {
+    void publishDraftListing(row.id)
+      .then(() => {
+        showToast("Application submitted for marketplace approval", "success");
+        invalidateDataViews(["my-listings", "marketplace", "admin", "dashboard"]);
+        refreshMyListings(true);
+      })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to publish", "error"));
+  };
 
   const editListing = (row: SellerListingRow) => {
     setEditLoading(true);
@@ -347,6 +410,15 @@ export default function MyListingsPage() {
   };
 
   const renderActions = (row: SellerListingRow) => {
+    if (row.status === "draft") {
+      return (
+        <>
+          <button className="btn btn-primary btn-sm" type="button" onClick={() => postToMarketplace(row)}>Post to marketplace</button>
+          <button className="btn btn-secondary btn-sm" type="button" disabled={editLoading} onClick={() => editListing(row)}>Edit</button>
+          <button className="btn btn-secondary btn-sm" type="button" onClick={() => sendToCarrier(row.id)}>Send to carrier</button>
+        </>
+      );
+    }
     if (tab === "sold" || tab === "expired" || row.status === "hiring") return null;
     const canEdit = ["pending", "active", "paused"].includes(row.status);
     return (
@@ -354,7 +426,7 @@ export default function MyListingsPage() {
         {canEdit ? (
           <button className="btn btn-ghost btn-sm" type="button" disabled={editLoading} onClick={() => editListing(row)}>Edit Listing</button>
         ) : null}
-        {row.status !== "pending" && row.status !== "sold" ? (
+        {row.status !== "pending" && row.status !== "sold" && row.status !== "draft" ? (
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => togglePause(row)}>
             {row.status === "paused" ? "Resume" : "Pause"}
           </button>
@@ -396,29 +468,79 @@ export default function MyListingsPage() {
   );
 
   return (
-    <div className="page active">
+    <div className="page active my-drivers-page">
       <PageHeader
-        title="My Listings"
-        desc="Manage listed drivers and track drivers you've sent to carriers."
+        title="My Drivers"
+        desc={
+          isRecruiter
+            ? "Manage your listed drivers and track drivers you've sent to carriers."
+            : "Drivers you're hiring from the marketplace and drivers recruiters sent to you."
+        }
         row
-        actions={(
-          <button type="button" className="btn btn-primary" onClick={() => navigate("/sell")}>
-            <PlusCircle className="icon-sm" /> List Driver
-          </button>
-        )}
+        actions={
+          isRecruiter ? (
+            <button type="button" className="btn btn-primary" onClick={() => navigate("/sell")}>
+              <PlusCircle className="icon-sm" /> List Driver
+            </button>
+          ) : null
+        }
       />
-      {refreshing && topSection === "listed" ? <div className="t-caption t-secondary" style={{ marginBottom: 8 }}>Updating...</div> : null}
+      {refreshing && isRecruiter && topSection === "listed" ? (
+        <div className="t-caption t-secondary" style={{ marginBottom: 8 }}>Updating...</div>
+      ) : null}
 
       <div className="tabs listings-top-tabs">
-        <button type="button" className={`tab ${topSection === "listed" ? "active" : ""}`} onClick={() => setTopSection("listed")}>
-          Listed Drivers
-        </button>
-        <button type="button" className={`tab ${topSection === "sent" ? "active" : ""}`} onClick={() => { setTopSection("sent"); setSentPage(1); }}>
-          Sent Drivers
-        </button>
+        {isRecruiter ? (
+          <>
+            <button type="button" className={`tab ${topSection === "listed" ? "active" : ""}`} onClick={() => setTopSection("listed")}>
+              Listed Drivers
+            </button>
+            <button type="button" className={`tab ${topSection === "applications" ? "active" : ""}`} onClick={() => { setTopSection("applications"); setPage(1); }}>
+              Driver Applications
+            </button>
+            <button type="button" className={`tab ${topSection === "sent" ? "active" : ""}`} onClick={() => { setTopSection("sent"); setSentPage(1); }}>
+              Sent Drivers
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className={`tab ${topSection === "marketplace" ? "active" : ""}`} onClick={() => setTopSection("marketplace")}>
+              Marketplace Drivers
+            </button>
+            <button type="button" className={`tab ${topSection === "applications" ? "active" : ""}`} onClick={() => setTopSection("applications")}>
+              Driver Applications
+            </button>
+            <button type="button" className={`tab ${topSection === "sent" ? "active" : ""}`} onClick={() => { setTopSection("sent"); setSentPage(1); }}>
+              Sent Drivers
+            </button>
+          </>
+        )}
       </div>
 
-      {topSection === "listed" ? (
+      {isRecruiter && topSection === "applications" ? (
+        <>
+          <div className="tabs driver-app-subtabs">
+            <button type="button" className={`tab ${applicationSubTab === "drafts" ? "active" : ""}`} onClick={() => setApplicationSubTab("drafts")}>
+              Profile drafts ({counts.draft ?? 0})
+            </button>
+            <button type="button" className={`tab ${applicationSubTab === "intake" ? "active" : ""}`} onClick={() => setApplicationSubTab("intake")}>
+              Intake applications
+            </button>
+          </div>
+          {applicationSubTab === "drafts" ? (
+            <>
+              <p className="t-caption t-secondary" style={{ margin: "12px 0" }}>
+                Saved driver profiles are not on the marketplace until you post them. You can also send drafts directly to carriers on Find Carriers.
+              </p>
+              {renderTable(true)}
+            </>
+          ) : (
+            <DriverIntakeApplicationsPanel role="recruiter" />
+          )}
+        </>
+      ) : null}
+
+      {isRecruiter && topSection === "listed" ? (
         <>
           <div className="tabs" id="listingTabs">
             <button type="button" className={`tab ${tab === "active" ? "active" : ""}`} onClick={() => { setTab("active"); setPage(1); }}>Active ({counts.active})</button>
@@ -431,57 +553,84 @@ export default function MyListingsPage() {
           <div className={`tab-panel ${tab === "sold" ? "active" : ""}`}>{renderTable(false)}</div>
           <div className={`tab-panel ${tab === "expired" ? "active" : ""}`}>{renderTable(false)}</div>
         </>
-      ) : (
+      ) : null}
+
+      {isCarrier && topSection === "applications" ? (
+        <DriverIntakeApplicationsPanel role="carrier" />
+      ) : null}
+
+      {isCarrier && topSection === "marketplace" ? (
         <>
-          <div className="card">
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Driver</th>
-                    <th>Carrier</th>
-                    <th>State</th>
-                    <th>Equipment</th>
-                    <th>Status</th>
-                    <th>Last update</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sentLoading && sentRows.length === 0 ? (
-                    <tr><td colSpan={6} className="t-secondary">Loading sent drivers...</td></tr>
-                  ) : sentRows.length === 0 ? (
-                    <tr><td colSpan={6} className="t-secondary">No drivers sent yet. Use Find Carriers to send drivers to hiring companies.</td></tr>
-                  ) : sentRows.map((r) => (
-                    <tr
-                      key={r.id}
-                      className="clickable-row"
-                      onClick={() => navigate(`/submissions/${r.id}`)}
-                      role="link"
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === "Enter" && navigate(`/submissions/${r.id}`)}
-                    >
-                      <td>{maskDriver(r.driver_first_name, r.driver_last_name)}</td>
-                      <td>{r.carrier_name}</td>
-                      <td>{r.driver_state}</td>
-                      <td>{r.driver_equipment}</td>
-                      <td>
-                        <span className={`badge ${submissionStatusBadgeClass(r.status)}`}>
-                          {submissionStatusLabel(r.status)}
-                        </span>
-                        {r.status_comment ? (
-                          <div className="t-caption t-secondary">{r.status_comment}</div>
-                        ) : null}
-                      </td>
-                      <td className="t-caption t-secondary">{new Date(r.updated_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {marketplaceLoading && marketplaceRows.length === 0 ? (
+            <p className="t-secondary">Loading marketplace drivers...</p>
+          ) : marketplaceRows.length === 0 ? (
+            <div className="card marketplace-empty">
+              <p className="t-body">No marketplace hiring processes yet.</p>
+              <p className="t-caption t-secondary">Start hiring from the marketplace to track drivers here.</p>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate("/marketplace")}>Browse Marketplace</button>
             </div>
-          </div>
+          ) : (
+            <div className="marketplace-driver-list">
+              {marketplaceRows.map((row) => (
+                <button
+                  key={row.dealId}
+                  type="button"
+                  className="marketplace-driver-row card"
+                  onClick={() => navigate(`/deals/${row.dealId}`)}
+                >
+                  <div className="marketplace-driver-row-main">
+                    <div className="sent-driver-card-avatar"><User className="icon-md" /></div>
+                    <div>
+                      <div className="t-body">{row.driverFirstName} {row.driverLastName.charAt(0)}.</div>
+                      <div className="t-caption t-secondary">{row.driverState} · {row.driverEquipment}</div>
+                      <div className="t-caption t-secondary">Recruiter: {row.recruiterName}</div>
+                    </div>
+                  </div>
+                  <div className="marketplace-driver-row-side">
+                    <span className={`badge ${statusBadgeClass(row.status)}`}>{row.status}</span>
+                    <div className="t-caption t-secondary">{fmtRecruitingFee(row.amount)}</div>
+                    <div className="t-caption t-secondary">Updated {fmtDate(row.updatedAt)}</div>
+                  </div>
+                  <ChevronRight className="icon-md" />
+                </button>
+              ))}
+            </div>
+          )}
+          <Pagination page={marketplacePage} totalPages={marketplaceTotalPages} total={marketplaceTotal} pageSize={DEFAULT_PAGE_SIZE} loading={marketplaceLoading} onPageChange={setMarketplacePage} />
+        </>
+      ) : null}
+
+      {topSection === "sent" ? (
+        <>
+          {sentLoading && sentRows.length === 0 ? (
+            <p className="t-secondary">Loading sent drivers...</p>
+          ) : sentRows.length === 0 ? (
+            <div className="card marketplace-empty">
+              <p className="t-body">No sent drivers yet.</p>
+              <p className="t-caption t-secondary">
+                {isRecruiter
+                  ? "Use Find Carriers to send your listed drivers to hiring companies."
+                  : "Recruiters will appear here when they send driver profiles to your company."}
+              </p>
+              {isRecruiter ? (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate("/find-carriers")}>Find Carriers</button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="sent-driver-card-grid">
+              {sentRows.map((r) => (
+                <SentDriverCard
+                  key={r.id}
+                  item={r}
+                  variant={isRecruiter ? "recruiter" : "carrier"}
+                  onClick={() => navigate(`/submissions/${r.id}`)}
+                />
+              ))}
+            </div>
+          )}
           <Pagination page={sentPage} totalPages={sentTotalPages} total={sentTotal} pageSize={DEFAULT_PAGE_SIZE} loading={sentLoading} onPageChange={setSentPage} />
         </>
-      )}
+      ) : null}
     </div>
   );
 }

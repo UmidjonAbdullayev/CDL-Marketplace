@@ -6,6 +6,7 @@ const SEARCH_REDIRECT_BLOCKLIST = new Set([
   "/pricing",
   "/compliance",
   "/sell",
+  "/my-drivers",
   "/my-listings",
   "/messages",
   "/deals",

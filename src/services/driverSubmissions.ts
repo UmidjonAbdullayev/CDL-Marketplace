@@ -22,6 +22,8 @@ export type DriverSubmissionRow = {
   status_comment: string | null;
   created_at: string;
   updated_at: string;
+  carrier_last_viewed_at: string | null;
+  recruiter_last_viewed_at: string | null;
 };
 
 export type DriverSubmissionListItem = DriverSubmissionRow & {
@@ -168,7 +170,7 @@ export async function fetchRecruiterSendableListings(): Promise<SendableListing[
     .from("driver_listings")
     .select("id, first_name, last_name, state, equipment, driver_type, desired_weekly_pay")
     .eq("seller_company_id", getActiveCompanyId())
-    .eq("status", "active")
+    .in("status", ["active", "draft"])
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return (data ?? []).map((row) => ({
@@ -237,6 +239,7 @@ export async function fetchRecruiterSubmissionsPage(
     .from("driver_submissions")
     .select(
       `id, listing_id, recruiter_company_id, carrier_company_id, status, status_comment, created_at, updated_at,
+      carrier_last_viewed_at, recruiter_last_viewed_at,
       driver_listings ( first_name, last_name, state, equipment ),
       carrier:companies!driver_submissions_carrier_company_id_fkey ( name )`,
       { count: "exact" }
@@ -258,6 +261,8 @@ export async function fetchRecruiterSubmissionsPage(
       status_comment: row.status_comment,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      carrier_last_viewed_at: row.carrier_last_viewed_at ?? null,
+      recruiter_last_viewed_at: row.recruiter_last_viewed_at ?? null,
       driver_first_name: listing?.first_name ?? "",
       driver_last_name: listing?.last_name ?? "",
       driver_state: listing?.state ?? "",
@@ -283,6 +288,7 @@ export async function fetchCarrierSubmissionsPage(
     .from("driver_submissions")
     .select(
       `id, listing_id, recruiter_company_id, carrier_company_id, status, status_comment, created_at, updated_at,
+      carrier_last_viewed_at, recruiter_last_viewed_at,
       driver_listings ( first_name, last_name, state, equipment ),
       recruiter:companies!driver_submissions_recruiter_company_id_fkey ( name )`,
       { count: "exact" }
@@ -304,6 +310,8 @@ export async function fetchCarrierSubmissionsPage(
       status_comment: row.status_comment,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      carrier_last_viewed_at: row.carrier_last_viewed_at ?? null,
+      recruiter_last_viewed_at: row.recruiter_last_viewed_at ?? null,
       driver_first_name: listing?.first_name ?? "",
       driver_last_name: listing?.last_name ?? "",
       driver_state: listing?.state ?? "",
@@ -314,6 +322,21 @@ export async function fetchCarrierSubmissionsPage(
   });
 
   return toPaginated(items, count ?? 0, page, pageSize);
+}
+
+export async function markSubmissionViewed(
+  submissionIdValue: string,
+  viewerCompanyId: string,
+  role: "carrier" | "recruiter"
+): Promise<void> {
+  if (!supabase) return;
+  const now = new Date().toISOString();
+  const field = role === "carrier" ? "carrier_last_viewed_at" : "recruiter_last_viewed_at";
+  await supabase
+    .from("driver_submissions")
+    .update({ [field]: now })
+    .eq("id", submissionIdValue)
+    .eq(role === "carrier" ? "carrier_company_id" : "recruiter_company_id", viewerCompanyId);
 }
 
 export async function fetchSubmissionWorkspace(submissionIdValue: string): Promise<SubmissionWorkspace | null> {

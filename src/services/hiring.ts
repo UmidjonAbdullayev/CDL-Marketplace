@@ -3,7 +3,8 @@ import type { HiringStage } from "../lib/hiring";
 import { supabase } from "../lib/supabase";
 import { enrichMessagesWithAttachmentUrls, getAttachmentViewUrl, uploadChatAttachment } from "./chatAttachments";
 import { fetchAdminProfile } from "./adminProfiles";
-import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation } from "./marketplace";
+import { LISTING_CARD_SELECT, LISTING_DETAIL_SELECT, rowToCard, rowToDriver, unwrapRelation, DEFAULT_PAGE_SIZE } from "./marketplace";
+import type { Paginated } from "../types";
 import { assertCanStartHiring, isPlatformOperationsCompany, resolveHireLimit } from "./platformLimits";
 import { assertWalletCanCoverDeal, deductWalletBalance } from "./wallet";
 import type { Driver, DriverCard } from "../types";
@@ -225,6 +226,78 @@ export async function fetchOngoingDeals(options?: { platformWide?: boolean }): P
     companies_seller: companyMap.get(d.seller_company_id) ? { name: companyMap.get(d.seller_company_id)!.name } : null,
     driver_listings: d.listing_id && listingMap.get(d.listing_id) ? listingMap.get(d.listing_id)! : null
   }));
+}
+
+export type CarrierMarketplaceDriverRow = {
+  dealId: string;
+  driverFirstName: string;
+  driverLastName: string;
+  driverState: string;
+  driverEquipment: string;
+  recruiterName: string;
+  status: string;
+  hiringStage: string;
+  amount: number;
+  updatedAt: string;
+  createdAt: string;
+};
+
+export async function fetchCarrierMarketplaceDrivers(
+  { page = 1, pageSize = DEFAULT_PAGE_SIZE }: { page?: number; pageSize?: number } = {}
+): Promise<Paginated<CarrierMarketplaceDriverRow>> {
+  if (!supabase) return { items: [], total: 0, page, pageSize, totalPages: 1 };
+
+  const carrierId = getActiveCompanyId();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data: deals, error, count } = await supabase
+    .from("deals")
+    .select("id, listing_id, seller_company_id, status, hiring_stage, amount, updated_at, created_at", { count: "exact" })
+    .eq("buyer_company_id", carrierId)
+    .order("updated_at", { ascending: false })
+    .range(from, to);
+  if (error) throw error;
+
+  const listingIds = (deals ?? []).map((d) => d.listing_id).filter((id): id is number => id != null);
+  const sellerIds = [...new Set((deals ?? []).map((d) => d.seller_company_id))];
+
+  const [{ data: listings }, { data: companies }] = await Promise.all([
+    listingIds.length
+      ? supabase.from("driver_listings").select("id, first_name, last_name, state, equipment").in("id", listingIds)
+      : Promise.resolve({ data: [] as { id: number; first_name: string; last_name: string; state: string; equipment: string }[] }),
+    sellerIds.length
+      ? supabase.from("companies").select("id, name").in("id", sellerIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] })
+  ]);
+
+  const listingMap = new Map((listings ?? []).map((l) => [l.id, l]));
+  const companyMap = new Map((companies ?? []).map((c) => [c.id, c.name]));
+
+  const items: CarrierMarketplaceDriverRow[] = (deals ?? []).map((d) => {
+    const listing = d.listing_id ? listingMap.get(d.listing_id) : null;
+    return {
+      dealId: d.id,
+      driverFirstName: listing?.first_name ?? "Driver",
+      driverLastName: listing?.last_name ?? "",
+      driverState: listing?.state ?? "—",
+      driverEquipment: listing?.equipment ?? "—",
+      recruiterName: companyMap.get(d.seller_company_id) ?? "Recruiter",
+      status: d.status,
+      hiringStage: d.hiring_stage ?? "contract",
+      amount: d.amount,
+      updatedAt: d.updated_at,
+      createdAt: d.created_at
+    };
+  });
+
+  return {
+    items,
+    total: count ?? 0,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil((count ?? 0) / pageSize))
+  };
 }
 
 export async function findActiveDealForListing(listingId: number): Promise<HiringDealRow | null> {

@@ -1,35 +1,23 @@
 import { useState } from "react";
 import {
-  Briefcase,
-  Calendar,
   ChevronDown,
-  Clock,
   Flame,
   SearchX,
-  SlidersHorizontal,
-  Truck,
-  User
+  SlidersHorizontal
 } from "lucide-react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { DriverMarketplaceCard } from "../components/marketplace/DriverMarketplaceCard";
+import { DriverProfileModal } from "../components/marketplace/DriverProfileModal";
 import { Pagination } from "../components/ui/Pagination";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
-import { DriverPreferencesPanel } from "../components/listing/DriverPreferencesPanel";
 import { DRIVER_TYPES, POSTED_WITHIN_OPTIONS } from "../lib/driver-types";
-import { PageHeader, ScoreBadge, StarRating, VerifiedBadge } from "../lib/badges";
-import { driverInitials, fmtDate, fmtPostedAt, fmtRecruitingFee, maskName } from "../lib/format";
-import { isCarrierMarketplaceVerified, isOwnRecruiterListing, isRecruiterAccount, marketplacePriceDisplay } from "../lib/marketplace-display";
+import { PageHeader } from "../lib/badges";
+import { isCarrierMarketplaceVerified, isOwnRecruiterListing, isRecruiterAccount } from "../lib/marketplace-display";
+import { registerReturnPath } from "../lib/public-routes";
 import { US_STATES } from "../lib/us-states";
 import { DEFAULT_PAGE_SIZE } from "../services/marketplace";
-
-function driverTypeBadgeClass(type: string): string {
-  switch (type) {
-    case "Company Driver": return "badge-blue";
-    case "Team": return "badge-purple";
-    case "Lease": return "badge-yellow";
-    default: return "badge-gray";
-  }
-}
+import type { DriverCard } from "../types";
 
 function activeFilterCount(
   filters: ReturnType<typeof useExchangeData>["marketplaceFilters"],
@@ -50,7 +38,7 @@ function activeFilterCount(
 
 export default function MarketplacePage() {
   const navigate = useNavigate();
-  const { sessionUser, isSignedIn } = useApp();
+  const { sessionUser, isSignedIn, showToast } = useApp();
   const {
     marketplaceFilters: filters,
     setMarketplaceFilters: setFilters,
@@ -64,16 +52,36 @@ export default function MarketplacePage() {
     marketplaceRefreshing: refreshing,
     marketplaceHasLoaded: hasLoaded,
     marketplaceHotOnly: hotOnly,
-    setMarketplaceHotOnly: setHotOnly,
-    trendingListingIds
+    setMarketplaceHotOnly: setHotOnly
   } = useExchangeData();
 
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [profileDriver, setProfileDriver] = useState<DriverCard | null>(null);
+  const [saved, setSaved] = useState<Set<number>>(new Set());
+
   const filterCount = activeFilterCount(filters, sessionUser);
   const showLoader = (!hasLoaded && loading) || ((loading || refreshing) && drivers.length === 0);
   const showEmpty = hasLoaded && !loading && !refreshing && drivers.length === 0;
   const carrierNeedsVerification =
     sessionUser?.accountType === "carrier" && !isCarrierMarketplaceVerified(sessionUser);
+
+  const toggleSave = (id: number) => {
+    setSaved((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const startHiring = (driver: DriverCard) => {
+    setProfileDriver(null);
+    if (!sessionUser) {
+      navigate(`/register?intent=hire&returnTo=${encodeURIComponent(registerReturnPath("/marketplace"))}`);
+      return;
+    }
+    navigate(`/hiring/contract/${driver.id}`);
+  };
 
   return (
     <div className="page active marketplace-page">
@@ -239,11 +247,11 @@ export default function MarketplacePage() {
 
         <div className="marketplace-results">
           <div className="marketplace-results-head">
-            <div className="t-secondary">
+            <div className="marketplace-results-count">
               {refreshing ? (
                 <span className="loading-inline">Updating...</span>
               ) : (
-                <><span id="resultCount">{total}</span> drivers available</>
+                <><strong>{total}</strong> drivers found</>
               )}
             </div>
           </div>
@@ -266,91 +274,22 @@ export default function MarketplacePage() {
               </button>
             </div>
           ) : (
-            <div className={`driver-grid driver-grid--3 ${refreshing ? "is-loading" : ""}`} id="driverGrid">
-              {drivers.map((d) => {
-                const ownListing = isOwnRecruiterListing(sessionUser, d);
-                const priceDisplay = marketplacePriceDisplay(sessionUser, d);
-                const cardClass = [
-                  "driver-card",
-                  d.featured ? "driver-card--featured" : "",
-                  d.isTrending || trendingListingIds.has(d.id) ? "driver-card--trending" : "",
-                  ownListing ? "driver-card--own-listing" : ""
-                ].filter(Boolean).join(" ");
-
-                const cardContent = (
-                  <>
-                    <div className="driver-card-badges">
-                      <span className={`badge ${driverTypeBadgeClass(d.driverType)} driver-badge`}>
-                        <User className="icon-sm" /> {d.driverType}
-                      </span>
-                    </div>
-                    <div className="driver-card-top">
-                      <div style={{ display: "flex", gap: "var(--s3)", alignItems: "flex-start", flex: 1, minWidth: 0 }}>
-                        <div className="driver-avatar">{driverInitials(d)}</div>
-                        <div>
-                          <h4>{maskName(d)}</h4>
-                          <div className="driver-sub">{d.state} · {d.cdl}</div>
-                          <div className="driver-posted"><Clock className="icon-sm" />{fmtPostedAt(d.createdAt)}</div>
-                        </div>
-                      </div>
-                      <ScoreBadge score={d.score} />
-                    </div>
-                    <div className="driver-meta">
-                      <span className={`driver-meta-item driver-meta-exp${d.expYears === 0 && d.expMonths === 0 ? " driver-meta-exp--training" : ""}`}>
-                        <Briefcase className="icon-sm" />{d.expLabel}
-                      </span>
-                      <span className="driver-meta-item"><Truck className="icon-sm" />{d.equip}</span>
-                      <span className="driver-meta-item"><Calendar className="icon-sm" />Avail {fmtDate(d.avail)}</span>
-                    </div>
-                    <DriverPreferencesPanel
-                      compact
-                      driverType={d.driverType}
-                      preferences={{
-                        desiredWeeklyPay: d.desiredWeeklyPay,
-                        weeksOutPreference: d.weeksOutPreference,
-                        maxDispatchFeePct: d.maxDispatchFeePct,
-                        companyExpectations: d.companyExpectations
-                      }}
-                    />
-                    <div className={`driver-price-row${priceDisplay === "hidden" ? " driver-price-row--no-price" : ""}`}>
-                      <div>
-                        {priceDisplay === "show" ? (
-                          <>
-                            <div className="driver-price">{fmtRecruitingFee(d.price)}</div>
-                            <div className="driver-fee-label t-caption t-secondary">{d.priceLabel ?? "Platform recruiting fee"}</div>
-                          </>
-                        ) : priceDisplay === "blur" ? (
-                          <div className="driver-price-blurred">
-                            <span className="driver-price-blurred-value">$•••</span>
-                            <span className="t-caption t-secondary">Verify account to view fee</span>
-                          </div>
-                        ) : null}
-                        {d.isTrending || trendingListingIds.has(d.id) ? (
-                          <span className="badge badge-red trending-badge"><Flame className="icon-sm" /> Trending</span>
-                        ) : null}
-                        {d.verified ? <VerifiedBadge text="Verified Listing" /> : null}
-                      </div>
-                      <div className="driver-seller"><StarRating rating={d.sellerRating} /><br />{d.seller}</div>
-                    </div>
-                  </>
-                );
-
-                return (
-                  <div
-                    key={d.id}
-                    className={`${cardClass} driver-card--clickable`}
-                    data-id={d.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(`/driver/${d.id}`)}
-                    onKeyDown={(e) => e.key === "Enter" && navigate(`/driver/${d.id}`)}
-                  >
-                    {ownListing ? <div className="driver-card-own-label">Your listing</div> : null}
-                    {d.featured ? <div className="driver-card-featured-label">featured</div> : null}
-                    {cardContent}
-                  </div>
-                );
-              })}
+            <div className={`marketplace-cards-list ${refreshing ? "is-loading" : ""}`} id="driverGrid">
+              {drivers.map((d) => (
+                <DriverMarketplaceCard
+                  key={d.id}
+                  driver={d}
+                  saved={saved.has(d.id)}
+                  ownListing={isOwnRecruiterListing(sessionUser, d)}
+                  onOpen={() => setProfileDriver(d)}
+                  onSave={() => toggleSave(d.id)}
+                  onStartHiring={() => startHiring(d)}
+                  onInvoice={() => {
+                    setProfileDriver(d);
+                    showToast("Invoice details are available in the hiring workspace.", "success");
+                  }}
+                />
+              ))}
             </div>
           )}
 
@@ -364,6 +303,16 @@ export default function MarketplacePage() {
           />
         </div>
       </div>
+
+      {profileDriver ? (
+        <DriverProfileModal
+          driver={profileDriver}
+          saved={saved.has(profileDriver.id)}
+          sessionUser={sessionUser}
+          onClose={() => setProfileDriver(null)}
+          onSave={() => toggleSave(profileDriver.id)}
+        />
+      ) : null}
     </div>
   );
 }

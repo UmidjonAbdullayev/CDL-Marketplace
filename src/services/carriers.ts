@@ -1,4 +1,6 @@
 import { carrierPlanLabel, searchCreditsForPlan } from "../lib/carrier-plans";
+import { filterCarrierCards } from "../lib/carrier-filters";
+import { carrierOffersCompletion, parseCarrierOffers } from "../lib/carrier-offers";
 import { supabase } from "../lib/supabase";
 import type { CarrierPlanId } from "../types/registration";
 import type { CarrierCard, CarrierDirectoryFilters } from "../types/carriers";
@@ -40,6 +42,8 @@ function rowToCarrierCard(row: CarrierRow): CarrierCard | null {
 
   const plan = account.selected_plan ?? "free";
   const companyName = String(profile.companyName ?? row.name).trim() || row.name;
+  const offersRequirements = parseCarrierOffers(profile.offersRequirements);
+  const { isComplete: offersComplete } = carrierOffersCompletion(offersRequirements);
 
   return {
     id: row.id,
@@ -62,7 +66,9 @@ function rowToCarrierCard(row: CarrierRow): CarrierCard | null {
     operatingRegions: String(profile.operatingRegions ?? profile.serviceArea ?? "").trim(),
     benefitsOffered: String(profile.benefitsOffered ?? "").trim(),
     contactPersonName: String(profile.contactPersonName ?? "").trim(),
-    website: String(profile.website ?? "").trim()
+    website: String(profile.website ?? "").trim(),
+    offersRequirements,
+    offersComplete
   };
 }
 
@@ -118,25 +124,7 @@ export async function fetchCarrierDirectory(
     .map((row) => rowToCarrierCard(row as CarrierRow))
     .filter((c): c is CarrierCard => c != null);
 
-  if (filters.plan) {
-    cards = cards.filter((c) => c.plan === filters.plan);
-  }
-  if (filters.state) {
-    cards = cards.filter((c) => c.state === filters.state);
-  }
-  if (filters.verifiedOnly) {
-    cards = cards.filter((c) => c.mcVerified && c.profileVerified);
-  }
-  if (filters.search?.trim()) {
-    const q = filters.search.trim().toLowerCase();
-    cards = cards.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.specialization.toLowerCase().includes(q) ||
-        c.serviceArea.toLowerCase().includes(q) ||
-        c.mcNumber.toLowerCase().includes(q)
-    );
-  }
+  cards = filterCarrierCards(cards, filters);
 
   const total = cards.length;
   const from = (page - 1) * pageSize;
@@ -148,4 +136,17 @@ export async function fetchCarrierDirectory(
 export async function fetchCarrierDirectoryStates(): Promise<string[]> {
   const { items } = await fetchCarrierDirectory({}, { page: 1, pageSize: 500 });
   return [...new Set(items.map((c) => c.state).filter(Boolean))].sort();
+}
+
+export async function fetchCarrierDirectoryRegions(): Promise<string[]> {
+  const { items } = await fetchCarrierDirectory({}, { page: 1, pageSize: 500 });
+  const regions = new Set<string>();
+  for (const c of items) {
+    if (c.state) regions.add(c.state);
+    for (const part of `${c.operatingRegions},${c.serviceArea}`.split(/[,;/|]/)) {
+      const trimmed = part.trim();
+      if (trimmed.length > 1) regions.add(trimmed);
+    }
+  }
+  return [...regions].sort((a, b) => a.localeCompare(b));
 }

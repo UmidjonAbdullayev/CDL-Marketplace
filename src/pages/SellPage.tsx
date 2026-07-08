@@ -17,7 +17,7 @@ import {
   listingStepComplete,
   listingStepErrors
 } from "../lib/listing-validation";
-import { createListing } from "../services/marketplace";
+import { createListing, createListingDraft } from "../services/marketplace";
 import { PlatformLimitError, resolveListingLimit, limitHint } from "../services/platformLimits";
 import { uploadChatAttachment } from "../services/chatAttachments";
 import { DriverExperienceFields } from "../components/listing/DriverExperienceFields";
@@ -138,6 +138,48 @@ export default function SellPage() {
     setStep(target);
   };
 
+  const saveDraft = async () => {
+    if (!first.trim() || !last.trim() || !state || !phone.trim()) {
+      showToast("Enter at least name, state, and phone to save a draft", "error");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await createListingDraft({
+        firstName: first.trim(),
+        lastName: last.trim(),
+        state,
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        cdlClass: cdlClass || "Class A",
+        cdlNumber: cdlNumber.trim() || undefined,
+        yearsExp: Number(yearsExp) || 0,
+        monthsExp: Number(monthsExp) || 0,
+        scoreFlag,
+        endorsements: endorsements.split(",").map((e) => e.trim()).filter(Boolean),
+        availableDate: availDate || new Date().toISOString().slice(0, 10),
+        equipment: equipment || "Dry Van",
+        routePref: routePref || "OTR",
+        notes: notes.trim(),
+        desiredWeeklyPay: desiredWeeklyPay.trim(),
+        weeksOutPreference: weeksOutPreference.trim(),
+        maxDispatchFeePct: maxDispatchFeePct === "" ? null : maxDispatchFeePct,
+        companyExpectations: companyExpectations.trim() || undefined,
+        price: Number(price) || 0,
+        driverType,
+        listingDurationDays,
+        documents
+      });
+      invalidateDataViews(["my-listings", "dashboard"]);
+      showToast("Driver application saved as draft — not posted to marketplace yet", "success");
+      navigate("/my-drivers");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to save draft", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const publish = async () => {
     const issues = collectListingIssues(fieldSnapshot);
     if (issues.length) {
@@ -180,7 +222,7 @@ export default function SellPage() {
       });
       invalidateDataViews(["my-listings", "admin", "dashboard", "marketplace"]);
       showToast("Listing published successfully!", "success");
-      navigate("/my-listings");
+      navigate("/my-drivers");
     } catch (e) {
       if (e instanceof PlatformLimitError) {
         setPublishErrors([e.message]);
@@ -408,9 +450,14 @@ export default function SellPage() {
         </div>
         <div className="form-nav">
           <button className="btn btn-secondary" style={{ visibility: step === 1 ? "hidden" : "visible" }} type="button" onClick={() => setStep((s) => Math.max(1, s - 1))}><ArrowLeft className="icon-sm" /> Previous</button>
-          <button className="btn btn-primary" type="button" onClick={next} disabled={submitting}>
-            {step === 7 ? (submitting ? "Publishing..." : "Publish Listing") : <>Next <ArrowRight className="icon-sm" /></>}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-secondary" type="button" onClick={() => void saveDraft()} disabled={submitting}>
+              Save draft
+            </button>
+            <button className="btn btn-primary" type="button" onClick={next} disabled={submitting}>
+              {step === 7 ? (submitting ? "Publishing..." : "Post to marketplace") : <>Next <ArrowRight className="icon-sm" /></>}
+            </button>
+          </div>
         </div>
       </div></div>
     </div>

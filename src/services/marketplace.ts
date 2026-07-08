@@ -863,10 +863,11 @@ export async function sendConversationFile(
   });
 }
 
-export type SellerListingsTab = "active" | "reserved" | "sold" | "expired";
+export type SellerListingsTab = "active" | "draft" | "reserved" | "sold" | "expired";
 
 const SELLER_TAB_STATUSES: Record<SellerListingsTab, string[]> = {
   active: ["pending", "active", "paused"],
+  draft: ["draft"],
   reserved: ["hiring", "reserved"],
   sold: ["sold"],
   expired: ["expired"]
@@ -906,7 +907,7 @@ export async function fetchSellerListingsPage(
 }
 
 export async function fetchSellerListingCounts() {
-  if (!supabase) return { active: 0, reserved: 0, sold: 0, expired: 0 };
+  if (!supabase) return { active: 0, draft: 0, reserved: 0, sold: 0, expired: 0 };
   const { data } = await supabase
     .from("driver_listings")
     .select("status")
@@ -914,6 +915,7 @@ export async function fetchSellerListingCounts() {
   const rows = data ?? [];
   return {
     active: rows.filter((r) => SELLER_TAB_STATUSES.active.includes(r.status)).length,
+    draft: rows.filter((r) => r.status === "draft").length,
     reserved: rows.filter((r) => SELLER_TAB_STATUSES.reserved.includes(r.status)).length,
     sold: rows.filter((r) => r.status === "sold").length,
     expired: rows.filter((r) => r.status === "expired").length
@@ -1206,6 +1208,72 @@ export async function createListing(input: NewListingInput): Promise<number> {
     status_class: "listed"
   });
   return data.id;
+}
+
+export async function createListingDraft(input: NewListingInput): Promise<number> {
+  if (!supabase) throw new Error("Supabase not configured");
+  const pricing = computeListingPricing(input.price || 0, 0);
+  const durationDays = Math.min(7, Math.max(1, input.listingDurationDays ?? 7));
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + durationDays);
+
+  const { data, error } = await supabase.from("driver_listings").insert({
+    first_name: input.firstName,
+    last_name: input.lastName,
+    state: input.state,
+    phone: input.phone,
+    email: input.email?.trim() || null,
+    cdl_class: input.cdlClass,
+    cdl_number: input.cdlNumber?.trim() || null,
+    years_exp: input.yearsExp,
+    months_exp: input.monthsExp,
+    score_flag: input.scoreFlag,
+    endorsements: input.endorsements,
+    available_date: input.availableDate,
+    equipment: input.equipment,
+    route_pref: input.routePref,
+    notes: input.notes,
+    desired_weekly_pay: input.desiredWeeklyPay.trim(),
+    weeks_out_preference: input.weeksOutPreference.trim(),
+    max_dispatch_fee_pct: input.maxDispatchFeePct ?? null,
+    company_expectations: input.companyExpectations?.trim() || null,
+    price: pricing.listPrice || input.price || 0,
+    platform_fee: pricing.platformFee,
+    net_payout: pricing.netPayout,
+    carrier_price: null,
+    admin_markup: 0,
+    driver_type: input.driverType,
+    listing_duration_days: durationDays,
+    expires_at: expiresAt.toISOString(),
+    documents: input.documents?.length ? input.documents : [],
+    seller_company_id: getActiveCompanyId(),
+    status: "draft",
+    verified: false,
+    consent_verified: false
+  }).select("id").single();
+  if (error) throw new Error(error.message);
+  return data.id;
+}
+
+export async function publishDraftListing(listingId: number): Promise<void> {
+  if (!supabase) throw new Error("Supabase not configured");
+  const capError = await (async () => {
+    const { data } = await supabase.from("driver_listings").select("price, driver_type, status").eq("id", listingId).single();
+    if (!data) return "Listing not found";
+    if (data.status !== "draft") return "Only draft applications can be published";
+    return validateRecruiterListPrice(Number(data.price), data.driver_type ?? "Owner Operator");
+  })();
+  if (capError) throw new Error(capError);
+
+  await assertCanCreateListing();
+
+  const { error } = await supabase
+    .from("driver_listings")
+    .update({ status: "pending", updated_at: new Date().toISOString() })
+    .eq("id", listingId)
+    .eq("status", "draft");
+  if (error) throw new Error(error.message);
+  await autoAssignListing(listingId);
 }
 
 export async function fetchPendingApprovalsPage(

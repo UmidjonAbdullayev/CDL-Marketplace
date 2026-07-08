@@ -41,9 +41,10 @@ import {
   type DealWorkspace
 } from "../services/hiring";
 import { markDealViewed } from "../services/dealViews";
+import { DriverApplicationWorkspacePanel } from "../components/driver-applications/DriverApplicationWorkspacePanel";
 import type { Driver, DriverCard } from "../types";
 
-type PartyTab = "pipeline" | "contracts" | "documents" | "activity";
+type PartyTab = "pipeline" | "contracts" | "documents" | "activity" | "application";
 
 function formatMsgTime(iso: string) {
   const d = new Date(iso);
@@ -502,6 +503,7 @@ export default function DealWorkspacePage() {
             <div className="deal-party-tabs">
               {([
                 { id: "pipeline" as PartyTab, label: "Hiring Pipeline" },
+                { id: "application" as PartyTab, label: "Application" },
                 { id: "contracts" as PartyTab, label: "Contracts" },
                 { id: "documents" as PartyTab, label: "Documents" },
                 { id: "activity" as PartyTab, label: "Activity" }
@@ -569,6 +571,15 @@ export default function DealWorkspacePage() {
                     Timeline updates are managed by platform admins only.
                   </p>
                 </>
+              ) : null}
+
+              {partyTab === "application" ? (
+                <DriverApplicationWorkspacePanel
+                  dealId={deal.id}
+                  listingId={deal.listing_id ?? undefined}
+                  carrierCompanyId={deal.buyer_company_id ?? undefined}
+                  canManage={isRecruiterParty || isCarrierParty}
+                />
               ) : null}
 
               {partyTab === "contracts" ? (

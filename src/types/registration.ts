@@ -1,3 +1,5 @@
+import type { CarrierOffersRequirements } from "./carrier-offers";
+
 export type AccountType = "carrier" | "agency" | "solo_recruiter";
 
 export type AdminRole = "none" | "admin" | "manager";
@@ -37,6 +39,8 @@ export type CarrierProfile = {
   operatingRegions?: string;
   /** Additional benefits or perks */
   benefitsOffered?: string;
+  /** Structured offers & requirements application (JSON) */
+  offersRequirements?: CarrierOffersRequirements;
 };
 
 export type AgencyProfile = {

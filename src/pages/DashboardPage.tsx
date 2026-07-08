@@ -25,6 +25,8 @@ import {
   SnapshotMetric
 } from "../lib/dashboard-widgets";
 import { CdlScoreVerifyModal } from "../components/CdlScoreVerifyModal";
+import { CarrierOffersBannerLoader } from "../components/carriers/CarrierOffersBannerLoader";
+import { canActAsCarrier } from "../lib/account-capabilities";
 const SNAPSHOT_PURPLE = "#7C3AED";
 
 function createSnapshotChart(el: HTMLCanvasElement, data: number[]) {
@@ -153,6 +155,12 @@ export default function DashboardPage() {
         <h2>Welcome back, {sessionUser?.name ?? "there"}! 👋</h2>
         <p>Here's what's happening in your marketplace today.</p>
       </div>
+
+      {canActAsCarrier(sessionUser) && sessionUser?.accountType === "carrier" ? (
+        <div style={{ marginBottom: 16 }}>
+          <CarrierOffersBannerLoader sessionUser={sessionUser} />
+        </div>
+      ) : null}
 
       <div className="dash-hero-row dashboard-section">
         <div className="card dash-snapshot-card">

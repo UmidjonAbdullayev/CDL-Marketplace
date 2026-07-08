@@ -1,3 +1,4 @@
+import type { CarrierOffersRequirements } from "./carrier-offers";
 import type { CarrierPlanId } from "./registration";
 
 export type CarrierCard = {
@@ -22,11 +23,19 @@ export type CarrierCard = {
   benefitsOffered: string;
   contactPersonName: string;
   website: string;
+  offersRequirements: CarrierOffersRequirements | null;
+  offersComplete: boolean;
 };
 
 export type CarrierDirectoryFilters = {
   plan?: CarrierPlanId | "";
   state?: string;
+  region?: string;
+  equipment?: string;
+  homeTime?: string;
+  fleetSize?: string;
+  minRating?: number;
   verifiedOnly?: boolean;
+  hasPayRange?: boolean;
   search?: string;
 };
