@@ -38,13 +38,13 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/marketplace", label: "Marketplace", icon: Store },
-      { to: "/find-carriers", label: "Find Carriers", icon: Building2, sellerOnly: true }
+      { to: "/find-carriers", label: "Find Carriers", icon: Building2 }
     ]
   },
   {
     label: "Transactions",
     items: [
-      { to: "/my-listings", label: "My Listings", icon: FileText },
+      { to: "/my-drivers", label: "My Drivers", icon: FileText },
       { to: "/ongoing-deals", label: "Ongoing Deals", icon: CheckCircle, badgeKey: "ongoingDeals" },
       { to: "/deals", label: "Deals / Escrow", icon: Handshake },
       { to: "/disputes", label: "Disputes", icon: AlertTriangle, badgeKey: "disputes" },

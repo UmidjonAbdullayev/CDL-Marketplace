@@ -7,6 +7,7 @@ import { ToastContainer } from "./ToastContainer";
 import { StickyUpgradeBanner } from "./StickyUpgradeBanner";
 import { PaymentProcessingBanner } from "../billing/PaymentProcessingBanner";
 import { WalletDepositPendingBanner } from "../billing/WalletDepositPendingBanner";
+import { CarrierOffersBannerLoader } from "../carriers/CarrierOffersBannerLoader";
 import { PublicTopbar } from "./PublicTopbar";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
@@ -135,6 +136,7 @@ export function AppShell() {
         <div className="content" id="content">
           {canActAsCarrier(sessionUser) && sessionUser ? (
             <div className="content-banner-wrap">
+              <CarrierOffersBannerLoader sessionUser={sessionUser} />
               <PaymentProcessingBanner
                 plan={sessionUser.selectedPlan}
                 status={sessionUser.status}

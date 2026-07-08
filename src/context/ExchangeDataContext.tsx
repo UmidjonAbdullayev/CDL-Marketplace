@@ -143,7 +143,7 @@ function pathToView(path: string): ViewKey | "driver" | null {
   if (path === "/deals") return "deals";
   if (path === "/disputes") return "disputes";
   if (path === "/messages") return "messages";
-  if (path === "/my-listings") return "my-listings";
+  if (path === "/my-listings" || path === "/my-drivers") return "my-listings";
   if (path === "/admin") return "admin";
   if (path.startsWith("/driver/")) return "driver";
   return null;
@@ -245,7 +245,7 @@ interface ExchangeDataValue {
   listingsPage: number;
   setListingsPage: React.Dispatch<React.SetStateAction<number>>;
   listingRows: SellerListingRow[];
-  listingCounts: { active: number; reserved: number; sold: number; expired: number };
+  listingCounts: { active: number; draft: number; reserved: number; sold: number; expired: number };
   reservations: Awaited<ReturnType<typeof fetchSellerReservations>>;
   listingsTotal: number;
   listingsTotalPages: number;
@@ -373,7 +373,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
   const [listingsTab, setListingsTab] = useState("active");
   const [listingsPage, setListingsPage] = useState(1);
   const [listingRows, setListingRows] = useState<SellerListingRow[]>([]);
-  const [listingCounts, setListingCounts] = useState({ active: 0, reserved: 0, sold: 0, expired: 0 });
+  const [listingCounts, setListingCounts] = useState({ active: 0, draft: 0, reserved: 0, sold: 0, expired: 0 });
   const [reservations, setReservations] = useState<Awaited<ReturnType<typeof fetchSellerReservations>>>([]);
   const [listingsTotal, setListingsTotal] = useState(0);
   const [listingsTotalPages, setListingsTotalPages] = useState(1);
@@ -718,7 +718,7 @@ export function ExchangeDataProvider({ children }: { children: ReactNode }) {
     if (mode === "initial" && listingRows.length === 0) setListingsLoading(true);
     else setListingsRefreshing(true);
 
-    const tab = (["active", "reserved", "sold", "expired"].includes(listingsTab)
+    const tab = (["active", "draft", "reserved", "sold", "expired"].includes(listingsTab)
       ? listingsTab
       : "active") as import("../services/marketplace").SellerListingsTab;
 

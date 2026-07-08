@@ -24,6 +24,7 @@ import SubmissionWorkspacePage from "./pages/SubmissionWorkspacePage";
 import OngoingDealsPage from "./pages/OngoingDealsPage";
 import RegisterPage from "./pages/RegisterPage";
 import RegistrationSuccessPage from "./pages/RegistrationSuccessPage";
+import DriverApplicationInvitePage from "./pages/DriverApplicationInvitePage";
 import HomeRedirect from "./components/HomeRedirect";
 
 export default function App() {
@@ -44,12 +45,14 @@ export default function App() {
             <Route path="/deals/:dealId" element={<DealWorkspacePage />} />
             <Route path="/submissions/:submissionId" element={<SubmissionWorkspacePage />} />
             <Route path="/sell" element={<SellPage />} />
-            <Route path="/my-listings" element={<MyListingsPage />} />
+            <Route path="/my-drivers" element={<MyListingsPage />} />
+            <Route path="/my-listings" element={<Navigate to="/my-drivers" replace />} />
             <Route path="/ongoing-deals" element={<OngoingDealsPage />} />
             <Route path="/purchased" element={<Navigate to="/ongoing-deals" replace />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/disputes" element={<DisputesPage />} />
             <Route path="/messages" element={<MessagesPage />} />
+            <Route path="/apply/:token" element={<DriverApplicationInvitePage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/compliance" element={<CompliancePage />} />

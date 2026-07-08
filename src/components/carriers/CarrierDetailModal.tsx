@@ -32,6 +32,7 @@ type ModalTab = "overview" | "send" | "chat";
 type CarrierDetailModalProps = {
   carrier: CarrierCard;
   recruiterCompanyId: string;
+  isRecruiter: boolean;
   onClose: () => void;
   onSent: (submissionId: string) => void;
   showToast: (msg: string, type?: "" | "success" | "error") => void;
@@ -48,6 +49,7 @@ function formatMsgTime(iso: string) {
 export function CarrierDetailModal({
   carrier,
   recruiterCompanyId,
+  isRecruiter,
   onClose,
   onSent,
   showToast
@@ -188,9 +190,11 @@ export function CarrierDetailModal({
           <button type="button" className={`tab ${tab === "overview" ? "active" : ""}`} onClick={() => setTab("overview")}>
             Company &amp; Offers
           </button>
-          <button type="button" className={`tab ${tab === "send" ? "active" : ""}`} onClick={() => setTab("send")}>
-            Send Driver
-          </button>
+          {isRecruiter ? (
+            <button type="button" className={`tab ${tab === "send" ? "active" : ""}`} onClick={() => setTab("send")}>
+              Send Driver
+            </button>
+          ) : null}
           <button type="button" className={`tab ${tab === "chat" ? "active" : ""}`} onClick={() => setTab("chat")}>
             Chat with Carrier
           </button>
@@ -272,7 +276,7 @@ export function CarrierDetailModal({
             </div>
           ) : null}
 
-          {tab === "send" ? (
+          {tab === "send" && isRecruiter ? (
             <div className="carrier-send-panel">
               <p className="t-body t-secondary">
                 Select one of your active listings to send to {carrier.name}. They will receive the driver profile and can update hiring status in the submission workspace.
@@ -282,7 +286,7 @@ export function CarrierDetailModal({
               ) : listings.length === 0 ? (
                 <div className="card">
                   <p className="t-body">No active listings available.</p>
-                  <p className="t-caption t-secondary">List a driver first from My Listings, then return here to send them to carriers.</p>
+                  <p className="t-caption t-secondary">List a driver first from My Drivers, then return here to send them to carriers.</p>
                 </div>
               ) : (
                 <>
@@ -338,7 +342,17 @@ export function CarrierDetailModal({
         </div>
 
         <div className="modal-footer">
-          {tab === "send" && listings.length > 0 ? (
+          {tab === "overview" && isRecruiter ? (
+            <button type="button" className="btn btn-primary" onClick={() => setTab("send")}>
+              <Send className="icon-sm" /> Send a driver
+            </button>
+          ) : null}
+          {tab === "overview" && !isRecruiter ? (
+            <button type="button" className="btn btn-primary" onClick={() => setTab("chat")}>
+              Message this carrier
+            </button>
+          ) : null}
+          {tab === "send" && isRecruiter && listings.length > 0 ? (
             <button
               type="button"
               className="btn btn-primary"
@@ -347,10 +361,6 @@ export function CarrierDetailModal({
             >
               <Send className="icon-sm" />
               {existingSubmissionId ? "View submission" : sending ? "Sending..." : "Send driver to carrier"}
-            </button>
-          ) : tab === "overview" ? (
-            <button type="button" className="btn btn-primary" onClick={() => setTab("send")}>
-              <Send className="icon-sm" /> Send a driver
             </button>
           ) : null}
           <button type="button" className="btn btn-secondary" onClick={onClose}>Close</button>
