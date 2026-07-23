@@ -1,7 +1,8 @@
-import { Bell, Menu, MessageCircle, Search, Shield } from "lucide-react";
+import { AlertTriangle, Bell, Menu, MessageCircle, Search, Shield } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
+import { useCarrierOffersReminder } from "../../context/CarrierOffersReminderContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
 import { canAccessAdminPanel } from "../../lib/account-capabilities";
 import { searchCreditsForPlan } from "../../lib/carrier-plans";
@@ -13,6 +14,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const location = useLocation();
   const { searchQuery, setSearchQuery, showToast, sessionUser, signOut, refreshCdlScoreCredits } = useApp();
   const { badges, notifications, dismissAllNotifications, dismissNotification } = useExchangeData();
+  const { showTopbarIcon, percent } = useCarrierOffersReminder();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -104,6 +106,19 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         </div>
       ) : null}
       <div className="topbar-actions">
+        {showTopbarIcon ? (
+          <button
+            type="button"
+            id="carrier-offers-reminder-target"
+            className="icon-btn carrier-offers-reminder-btn is-pulse"
+            title={`Complete Offers & Requirements (${percent}%)`}
+            aria-label="Complete offers and requirements"
+            onClick={() => navigate("/profile?tab=offers")}
+          >
+            <AlertTriangle />
+            <span className="carrier-offers-reminder-dot" aria-hidden />
+          </button>
+        ) : null}
         <div className="notif-wrap">
           <button
             className="icon-btn"

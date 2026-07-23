@@ -8,8 +8,10 @@ import { StickyUpgradeBanner } from "./StickyUpgradeBanner";
 import { PaymentProcessingBanner } from "../billing/PaymentProcessingBanner";
 import { WalletDepositPendingBanner } from "../billing/WalletDepositPendingBanner";
 import { CarrierOffersBannerLoader } from "../carriers/CarrierOffersBannerLoader";
+import { CarrierOffersFlyIcon } from "../carriers/CarrierOffersFlyIcon";
 import { PublicTopbar } from "./PublicTopbar";
 import { useApp } from "../../context/AppContext";
+import { CarrierOffersReminderProvider } from "../../context/CarrierOffersReminderContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
 import { canActAsCarrier, isPlatformManager, isPlatformStaff, isSellerNav } from "../../lib/account-capabilities";
 import { fmtPrice } from "../../lib/format";
@@ -124,6 +126,7 @@ export function AppShell() {
   }
 
   return (
+    <CarrierOffersReminderProvider sessionUser={sessionUser}>
     <div className="app">
       <div
         className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
@@ -151,6 +154,8 @@ export function AppShell() {
       <Modal />
       <ToastContainer />
       <StickyUpgradeBanner />
+      <CarrierOffersFlyIcon />
     </div>
+    </CarrierOffersReminderProvider>
   );
 }

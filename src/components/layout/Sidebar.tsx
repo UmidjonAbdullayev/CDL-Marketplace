@@ -14,7 +14,8 @@ import {
   ShieldCheck,
   Store,
   Truck,
-  UserCog
+  UserCog,
+  Users
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { useExchangeData } from "../../context/ExchangeDataContext";
@@ -38,7 +39,8 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/marketplace", label: "Marketplace", icon: Store },
-      { to: "/find-carriers", label: "Find Carriers", icon: Building2 }
+      { to: "/find-carriers", label: "Find Carriers", icon: Building2 },
+      { to: "/leads", label: "Leads", icon: Users }
     ]
   },
   {

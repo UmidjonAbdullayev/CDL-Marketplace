@@ -32,17 +32,56 @@
   align-items: start;
 }
 .marketplace-results { min-width: 0; }
+.marketplace-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
 .marketplace-results-count {
   font-size: 11px;
   color: var(--cdl-muted);
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 .marketplace-results-count strong { color: var(--cdl-text); }
+.marketplace-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--cdl-border);
+  border-radius: 8px;
+  background: var(--cdl-white);
+}
+.marketplace-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cdl-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.marketplace-view-btn:hover { color: var(--cdl-text); background: var(--gray-50, #F8FAFC); }
+.marketplace-view-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
 .marketplace-cards-list { display: flex; flex-direction: column; gap: 12px; }
 .marketplace-cards-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.marketplace-cards-list.is-loading,
+.marketplace-cards-grid.is-loading {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .cdlone-layout { display: grid; grid-template-columns: 1fr 196px; gap: 12px; align-items: start; }
@@ -162,10 +201,37 @@
 
 .driver-card-body {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   column-gap: 14px;
   align-items: start;
   padding: 16px 18px 14px;
+}
+
+.driver-card-price {
+  grid-column: 3;
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 88px;
+}
+.driver-card-price .driver-price {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.driver-card-price .driver-fee-label {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.driver-card-price.driver-price-blurred {
+  align-items: flex-end;
+}
+.driver-card-price .driver-price-blurred-value {
+  font-size: 18px;
 }
 
 .driver-avatar-cdlone {
@@ -319,6 +385,91 @@
 }
 .driver-footer-offer:hover { background: var(--card-cta-hover); border-color: var(--card-cta-hover); }
 
+/* Compact square / grid marketplace cards */
+.driver-card-cdlone--grid {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 12px;
+  min-height: 100%;
+  aspect-ratio: auto;
+}
+.driver-card-grid-top {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+.driver-card-cdlone--grid .driver-avatar-cdlone {
+  width: 40px;
+  height: 40px;
+  font-size: 12px;
+}
+.driver-card-grid-identity {
+  min-width: 0;
+}
+.driver-card-grid-identity .driver-name-cdlone {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+.driver-card-cdlone--grid .driver-header-badges {
+  margin-bottom: 0;
+}
+.driver-card-cdlone--grid .driver-meta-row {
+  gap: 8px 10px;
+  margin-bottom: 10px;
+}
+.driver-card-cdlone--grid .driver-desc-cdlone {
+  flex: 1;
+  margin-bottom: 12px;
+  padding: 8px 0 8px 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.driver-card-grid-price-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #E5E7EB;
+  margin-bottom: 10px;
+}
+.driver-card-cdlone--grid .driver-card-price {
+  grid-column: auto;
+  text-align: left;
+  min-width: 0;
+}
+.driver-card-cdlone--grid .driver-card-price .driver-price {
+  font-size: 20px;
+}
+.driver-card-grid-price-row .driver-seller {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #94A3B8;
+  text-align: right;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.driver-card-footer-btns--grid {
+  width: 100%;
+}
+.driver-card-footer-btns--grid .driver-footer-offer {
+  flex: 1;
+  justify-content: center;
+}
+.driver-card-footer-btns--grid .driver-footer-save,
+.driver-card-footer-btns--grid .driver-footer-invoice {
+  padding: 7px 10px;
+}
+
 .post-banner-cdlone {
   margin-top: 14px;
   background: #EFF6FF;
@@ -421,7 +572,7 @@
   .dash-v2-stats { grid-template-columns: repeat(2, 1fr); }
   .dash-v2-mid, .dash-v2-bottom { grid-template-columns: 1fr; }
   .marketplace-grid { grid-template-columns: 1fr; }
-  .marketplace-cards-grid { grid-template-columns: 1fr; }
+  .marketplace-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cdlone-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
@@ -433,7 +584,17 @@
   .cdlone-sidebar.mobile-open .cdlone-brand-text { opacity: 1; width: auto; }
   .find-drivers-layout { grid-template-columns: 1fr; }
   .marketplace-grid { grid-template-columns: 1fr; }
-  .driver-card-body { grid-template-columns: 44px minmax(0, 1fr); }
+  .marketplace-cards-grid { grid-template-columns: 1fr; }
+  .driver-card-body {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .driver-card-cdlone--list .driver-card-price {
+    grid-column: 1 / -1;
+    text-align: left;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #E5E7EB;
+  }
   .driver-card-footer { flex-direction: column; align-items: flex-start; gap: 10px; }
   .driver-card-footer-btns { width: 100%; flex-wrap: wrap; }
   .driver-footer-btn { flex: 1; justify-content: center; min-width: 0; }
@@ -1019,13 +1180,8 @@
 
 .carrier-modal-chat { min-height: 280px; }
 
-.marketplace-page .marketplace-cards-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.marketplace-page .marketplace-cards-list.is-loading {
+.marketplace-page .marketplace-cards-list.is-loading,
+.marketplace-page .marketplace-cards-grid.is-loading {
   opacity: 0.6;
   pointer-events: none;
 }

@@ -29,7 +29,7 @@ import {
   driverCardBio,
   scoreToCdlScore
 } from "../../lib/driver-card-display";
-import { isCarrierMarketplaceVerified, shouldShowMarketplacePrice } from "../../lib/marketplace-display";
+import { isCarrierMarketplaceVerified, marketplaceDisplayFee, shouldShowMarketplacePrice } from "../../lib/marketplace-display";
 import { registerReturnPath } from "../../lib/public-routes";
 import type { DriverCard } from "../../types";
 import type { SessionUser } from "../../lib/session";
@@ -72,7 +72,7 @@ export function DriverProfileModal({
   const homeTime = driver.weeksOutPreference || "Flexible";
   const desiredPay = driver.desiredWeeklyPay || "Negotiable";
   const canSeePricing = shouldShowMarketplacePrice(sessionUser, driver);
-  const fee = driver.carrierPrice ?? driver.price;
+  const fee = marketplaceDisplayFee(sessionUser, driver);
   const canHire =
     Boolean(sessionUser) && canStartHiring(sessionUser) && isCarrierMarketplaceVerified(sessionUser);
 

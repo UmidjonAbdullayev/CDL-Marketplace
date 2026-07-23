@@ -7,6 +7,7 @@ import DashboardPage from "./pages/DashboardPage";
 import MarketplacePage from "./pages/MarketplacePage";
 import DriverDetailPage from "./pages/DriverDetailPage";
 import FindCarriersPage from "./pages/FindCarriersPage";
+import LeadsPage from "./pages/LeadsPage";
 import SellPage from "./pages/SellPage";
 import MyListingsPage from "./pages/MyListingsPage";
 import DealsPage from "./pages/DealsPage";
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/marketplace" element={<MarketplacePage />} />
             <Route path="/find-carriers" element={<FindCarriersPage />} />
+            <Route path="/leads" element={<LeadsPage />} />
             <Route path="/driver/:id" element={<DriverDetailPage />} />
             <Route path="/hiring/contract/:listingId" element={<ContractPage />} />
             <Route path="/deals/:dealId" element={<DealWorkspacePage />} />
