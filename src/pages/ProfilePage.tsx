@@ -117,6 +117,7 @@ export default function ProfilePage() {
     try {
       await saveCarrierOffersRequirements(sessionUser.id, offers);
       showToast("Offers & requirements saved", "success");
+      window.dispatchEvent(new Event("carrier-offers-updated"));
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Failed to save", "error");
     } finally {

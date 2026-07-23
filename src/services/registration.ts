@@ -268,15 +268,36 @@ export async function fetchRegistrationAccounts(): Promise<RegistrationAccount[]
 
 export async function approveRegistration(id: string): Promise<void> {
   if (!supabase) return;
-  const { data } = await supabase.from("registration_accounts").select("account_type, status, selected_plan").eq("id", id).single();
+  const { data } = await supabase
+    .from("registration_accounts")
+    .select("account_type, status, selected_plan")
+    .eq("id", id)
+    .single();
+
   let status: RegistrationStatus = "active";
-  if (data?.account_type === "carrier" && data.selected_plan && data.selected_plan !== "free") {
-    status = data.status === "pending_payment" ? "pending_payment" : "active";
+  const wasSuspendedOrRejected = data?.status === "suspended" || data?.status === "rejected";
+
+  if (data?.account_type === "carrier") {
+    const plan = data.selected_plan;
+    if (!plan || plan === "free") {
+      status = "active_preview";
+    } else if (data.status === "pending_payment" && !wasSuspendedOrRejected) {
+      status = "pending_payment";
+    } else {
+      status = "active";
+    }
+  } else if (data?.status === "pending_payment" && !wasSuspendedOrRejected) {
+    status = "pending_payment";
   }
-  if (data?.status === "pending_payment") status = "pending_payment";
+
   const { error } = await supabase
     .from("registration_accounts")
-    .update({ status, updated_at: new Date().toISOString(), rejection_reason: null })
+    .update({
+      status,
+      suspended: false,
+      rejection_reason: null,
+      updated_at: new Date().toISOString()
+    })
     .eq("id", id);
   if (error) throw error;
 }

@@ -66,3 +66,19 @@ export function isOwnRecruiterListing(user: SessionUser | null | undefined, card
   if (!isRecruiterAccount(user)) return false;
   return card.sellerCompanyId === user.companyId;
 }
+
+/** Fee shown on marketplace cards — carriers always see admin-set carrier price, never recruiter list price. */
+export function marketplaceDisplayFee(
+  user: SessionUser | null | undefined,
+  card: DriverCard
+): number {
+  if (isRecruiterAccount(user)) {
+    return card.listPrice ?? card.price;
+  }
+  if (user?.accountType === "carrier" || (canActAsCarrier(user) && isPlatformStaff(user))) {
+    if (card.carrierPrice != null && card.carrierPrice > 0) return card.carrierPrice;
+    return 0;
+  }
+  if (card.carrierPrice != null && card.carrierPrice > 0) return card.carrierPrice;
+  return card.price;
+}

@@ -8,9 +8,10 @@ import { AdminTeamPanel } from "../components/admin/AdminTeamPanel";
 import { CompanyLimitsPanel } from "../components/admin/CompanyLimitsPanel";
 import { ListingApprovalPanel } from "../components/admin/ListingApprovalPanel";
 import { AdminWalletDepositsPanel } from "../components/admin/AdminWalletDepositsPanel";
+import { AdminLeadsPanel } from "../components/admin/AdminLeadsPanel";
 import { PageHeader } from "../lib/badges";
 
-const VALID_TABS = new Set(["deals", "approvals", "registrations", "wallet", "limits", "team", "fees"]);
+const VALID_TABS = new Set(["deals", "approvals", "registrations", "wallet", "limits", "team", "fees", "leads"]);
 
 function TabBadge({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -103,6 +104,7 @@ export default function AdminPage() {
         {isManager ? (
           <button type="button" className={`tab ${tab === "team" ? "active" : ""}`} onClick={() => selectTab("team")}>Admin Team</button>
         ) : null}
+        <button type="button" className={`tab ${tab === "leads" ? "active" : ""}`} onClick={() => selectTab("leads")}>Leads</button>
         <button type="button" className={`tab ${tab === "fees" ? "active" : ""}`} onClick={() => selectTab("fees")}>Fee Policy</button>
       </div>
 
@@ -130,6 +132,9 @@ export default function AdminPage() {
           <AdminTeamPanel />
         </div>
       ) : null}
+      <div className={`tab-panel ${tab === "leads" ? "active" : ""}`}>
+        <AdminLeadsPanel />
+      </div>
       <div className={`tab-panel ${tab === "fees" ? "active" : ""}`}>
         <div className="card">
           <div className="card-body" style={{ fontSize: 13, lineHeight: 1.7 }}>

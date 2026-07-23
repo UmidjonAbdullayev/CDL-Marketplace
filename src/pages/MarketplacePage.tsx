@@ -1,23 +1,45 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   Flame,
+  LayoutGrid,
+  LayoutList,
   SearchX,
   SlidersHorizontal
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { DriverMarketplaceCard } from "../components/marketplace/DriverMarketplaceCard";
+import {
+  DriverMarketplaceCard,
+  type MarketplaceCardLayout
+} from "../components/marketplace/DriverMarketplaceCard";
 import { DriverProfileModal } from "../components/marketplace/DriverProfileModal";
 import { Pagination } from "../components/ui/Pagination";
 import { useApp } from "../context/AppContext";
 import { useExchangeData } from "../context/ExchangeDataContext";
 import { DRIVER_TYPES, POSTED_WITHIN_OPTIONS } from "../lib/driver-types";
 import { PageHeader } from "../lib/badges";
-import { isCarrierMarketplaceVerified, isOwnRecruiterListing, isRecruiterAccount } from "../lib/marketplace-display";
+import {
+  isCarrierMarketplaceVerified,
+  isOwnRecruiterListing,
+  isRecruiterAccount,
+  marketplacePriceDisplay
+} from "../lib/marketplace-display";
 import { registerReturnPath } from "../lib/public-routes";
 import { US_STATES } from "../lib/us-states";
 import { DEFAULT_PAGE_SIZE } from "../services/marketplace";
 import type { DriverCard } from "../types";
+
+const LAYOUT_STORAGE_KEY = "marketplace-card-layout";
+
+function readStoredLayout(): MarketplaceCardLayout {
+  try {
+    const v = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (v === "grid" || v === "list") return v;
+  } catch {
+    /* ignore */
+  }
+  return "list";
+}
 
 function activeFilterCount(
   filters: ReturnType<typeof useExchangeData>["marketplaceFilters"],
@@ -58,6 +80,15 @@ export default function MarketplacePage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [profileDriver, setProfileDriver] = useState<DriverCard | null>(null);
   const [saved, setSaved] = useState<Set<number>>(new Set());
+  const [cardLayout, setCardLayout] = useState<MarketplaceCardLayout>(readStoredLayout);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAYOUT_STORAGE_KEY, cardLayout);
+    } catch {
+      /* ignore */
+    }
+  }, [cardLayout]);
 
   const filterCount = activeFilterCount(filters, sessionUser);
   const showLoader = (!hasLoaded && loading) || ((loading || refreshing) && drivers.length === 0);
@@ -254,6 +285,26 @@ export default function MarketplacePage() {
                 <><strong>{total}</strong> drivers found</>
               )}
             </div>
+            <div className="marketplace-view-toggle" role="group" aria-label="Card layout">
+              <button
+                type="button"
+                className={`marketplace-view-btn ${cardLayout === "list" ? "active" : ""}`}
+                aria-pressed={cardLayout === "list"}
+                title="List view"
+                onClick={() => setCardLayout("list")}
+              >
+                <LayoutList size={16} />
+              </button>
+              <button
+                type="button"
+                className={`marketplace-view-btn ${cardLayout === "grid" ? "active" : ""}`}
+                aria-pressed={cardLayout === "grid"}
+                title="Grid view"
+                onClick={() => setCardLayout("grid")}
+              >
+                <LayoutGrid size={16} />
+              </button>
+            </div>
           </div>
 
           {showLoader ? (
@@ -274,11 +325,17 @@ export default function MarketplacePage() {
               </button>
             </div>
           ) : (
-            <div className={`marketplace-cards-list ${refreshing ? "is-loading" : ""}`} id="driverGrid">
+            <div
+              className={`${cardLayout === "grid" ? "marketplace-cards-grid" : "marketplace-cards-list"} ${refreshing ? "is-loading" : ""}`}
+              id="driverGrid"
+            >
               {drivers.map((d) => (
                 <DriverMarketplaceCard
                   key={d.id}
                   driver={d}
+                  layout={cardLayout}
+                  priceDisplay={marketplacePriceDisplay(sessionUser, d)}
+                  sessionUser={sessionUser}
                   saved={saved.has(d.id)}
                   ownListing={isOwnRecruiterListing(sessionUser, d)}
                   onOpen={() => setProfileDriver(d)}
