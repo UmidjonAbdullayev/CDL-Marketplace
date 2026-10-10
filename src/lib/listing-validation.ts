@@ -10,8 +10,6 @@ export const LISTING_STEPS = [
   "Review"
 ] as const;
 
-import { validateDriverPreferences } from "./driver-preferences";
-
 export type ListingFieldSnapshot = {
   first: string;
   last: string;
@@ -69,28 +67,14 @@ export function listingStepErrors(stepNum: number, fields: ListingFieldSnapshot)
   }
   if (stepNum === 2) {
     if (!fields.cdlClass) errs.push("CDL class is required");
-    if (fields.yearsExp === "") errs.push("Years of experience is required");
-    if (fields.monthsExp === "") errs.push("Months of experience is required");
   }
   if (stepNum === 3) {
-    if (!fields.availDate) errs.push("Availability date is required");
     if (!fields.equipment) errs.push("Equipment preference is required");
     if (!fields.routePref) errs.push("Route preference is required");
     if (!fields.driverType) errs.push("Driver type is required");
-    errs.push(
-      ...validateDriverPreferences(
-        {
-          desiredWeeklyPay: fields.desiredWeeklyPay,
-          weeksOutPreference: fields.weeksOutPreference,
-          maxDispatchFeePct: fields.maxDispatchFeePct === "" ? null : fields.maxDispatchFeePct,
-          companyExpectations: fields.companyExpectations
-        },
-        fields.driverType
-      )
-    );
-  }
-  if (stepNum === 4) {
-    if (!fields.documents.length) errs.push("Upload at least one document");
+    if (fields.maxDispatchFeePct !== "" && Number(fields.maxDispatchFeePct) > 100) {
+      errs.push("Dispatch fee cannot exceed 100%");
+    }
   }
   if (stepNum === 5) {
     if (!fields.consent) errs.push("Driver consent confirmation is required");

@@ -14,8 +14,7 @@ import {
   formatListingIssuesForToast,
   formatListingPublishError,
   LISTING_STEPS,
-  listingStepComplete,
-  listingStepErrors
+  listingStepComplete
 } from "../lib/listing-validation";
 import { createListing, createListingDraft } from "../services/marketplace";
 import { PlatformLimitError, resolveListingLimit, limitHint } from "../services/platformLimits";
@@ -108,32 +107,8 @@ export default function SellPage() {
     }
   };
 
-  const validateCurrentStep = (): boolean => {
-    const errs = listingStepErrors(step, fieldSnapshot);
-    if (errs.length) {
-      setPublishErrors(errs.map((e) => `Step ${step} (${LISTING_STEPS[step - 1]}): ${e}`));
-      showToast(errs[0], "error");
-      return false;
-    }
-    setPublishErrors([]);
-    return true;
-  };
-
   const goToStep = (target: number) => {
     if (target === step) return;
-    if (target < step) {
-      setStep(target);
-      return;
-    }
-    for (let s = step; s < target; s += 1) {
-      const errs = listingStepErrors(s, fieldSnapshot);
-      if (errs.length) {
-        setPublishErrors(errs.map((e) => `Step ${s} (${LISTING_STEPS[s - 1]}): ${e}`));
-        showToast(`Complete step ${s} first: ${errs[0]}`, "error");
-        setStep(s);
-        return;
-      }
-    }
     setPublishErrors([]);
     setStep(target);
   };
@@ -203,11 +178,11 @@ export default function SellPage() {
         email: email.trim() || undefined,
         cdlClass,
         cdlNumber: cdlNumber.trim() || undefined,
-        yearsExp: Number(yearsExp),
-        monthsExp: Number(monthsExp),
+        yearsExp: Number(yearsExp) || 0,
+        monthsExp: Number(monthsExp) || 0,
         scoreFlag,
         endorsements: endorsements.split(",").map((e) => e.trim()).filter(Boolean),
-        availableDate: availDate,
+        availableDate: availDate || new Date().toISOString().slice(0, 10),
         equipment,
         routePref,
         notes: notes.trim(),
@@ -238,7 +213,6 @@ export default function SellPage() {
   };
 
   const next = () => {
-    if (!validateCurrentStep()) return;
     if (step < 7) {
       setPublishErrors([]);
       setStep((s) => s + 1);
@@ -355,7 +329,7 @@ export default function SellPage() {
           <div className="form-group"><label>Internal notes for buyers (optional)</label><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything else recruiters should know when presenting this driver..." /></div>
         </div>
         <div className={`form-step ${step === 4 ? "active" : ""}`}>
-          <h3 style={{ marginBottom: 16 }}>Step 4: Upload Documents *</h3>
+          <h3 style={{ marginBottom: 16 }}>Step 4: Upload Documents (optional)</h3>
           <input
             ref={docInputRef}
             type="file"
@@ -385,7 +359,7 @@ export default function SellPage() {
               ))}
             </ul>
           ) : (
-            <p className="t-caption t-secondary" style={{ marginTop: 12 }}>At least one document is required before publishing.</p>
+            <p className="t-caption t-secondary" style={{ marginTop: 12 }}>Documents are optional. You can skip this step and publish without uploads.</p>
           )}
         </div>
         <div className={`form-step ${step === 5 ? "active" : ""}`}>
