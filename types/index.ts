@@ -1,0 +1,95 @@
+import type { DriverType } from "../lib/driver-types";
+
+export type ScoreFlag = "green" | "yellow" | "red";
+
+/** Minimal fields for marketplace / list card views */
+export interface DriverCard {
+  id: number;
+  first: string;
+  last: string;
+  state: string;
+  /** @deprecated Use expLabel for display */
+  exp: number;
+  expYears: number;
+  expMonths: number;
+  expLabel: string;
+  cdl: string;
+  equip: string;
+  avail: string;
+  score: ScoreFlag;
+  verified: boolean;
+  price: number;
+  priceLabel?: string;
+  listPrice?: number;
+  netPayout?: number | null;
+  carrierPrice?: number | null;
+  seller: string;
+  sellerRating: number;
+  sellerCompanyId?: string;
+  hotScore?: number;
+  isTrending?: boolean;
+  driverType: DriverType;
+  featured: boolean;
+  createdAt: string;
+  isNew?: boolean;
+  desiredWeeklyPay?: string;
+  weeksOutPreference?: string;
+  maxDispatchFeePct?: number | null;
+  companyExpectations?: string;
+}
+
+export interface Driver {
+  id: number;
+  first: string;
+  last: string;
+  state: string;
+  /** @deprecated Use expLabel for display */
+  exp: number;
+  expYears: number;
+  expMonths: number;
+  expLabel: string;
+  cdl: string;
+  equip: string;
+  endorse: string[];
+  avail: string;
+  score: ScoreFlag;
+  verified: boolean;
+  price: number;
+  priceLabel?: string;
+  listPrice?: number;
+  netPayout?: number | null;
+  carrierPrice?: number | null;
+  seller: string;
+  sellerRating: number;
+  driverType?: DriverType;
+  phone: string;
+  email: string;
+  cdlNum: string;
+  docs: string[];
+  notes: string;
+  sellerCompanyId?: string;
+  desiredWeeklyPay?: string;
+  weeksOutPreference?: string;
+  maxDispatchFeePct?: number | null;
+  companyExpectations?: string;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface HotListing {
+  id: number;
+  name: string;
+  exp: string;
+  state: string;
+  route: string;
+  trailer: string;
+  score: number;
+  price: number;
+  hot?: boolean;
+}
